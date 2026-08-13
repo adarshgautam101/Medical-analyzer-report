@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { ArrowRight, RefreshCw } from 'lucide-react'
 
-// Enhanced Analytics Card with animations
+
 export const AnalyticsCard = ({
   icon: Icon,
   title,
@@ -53,7 +53,7 @@ export const AnalyticsCard = ({
   )
 }
 
-// Enhanced Metric Card
+
 export const MetricCard = ({
   title,
   value,
@@ -116,7 +116,7 @@ export const MetricCard = ({
   )
 }
 
-// Action Button Card
+
 export const ActionCard = ({
   icon: Icon,
   title,
@@ -150,7 +150,7 @@ export const ActionCard = ({
   )
 }
 
-// Chart Container with refresh functionality
+
 export const ChartContainer = ({
   title,
   children,

@@ -1,7 +1,7 @@
-import {useState, useEffect} from 'react'
-import {Link} from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import api from '../utils/api'
-import {Users, FileText, AlertTriangle, Calendar, Activity, TrendingUp, UserCheck} from 'lucide-react'
+import { Users, FileText, AlertTriangle, Calendar, Activity, TrendingUp, UserCheck, MessageCircle } from 'lucide-react'
 
 export default function DoctorDashboard() {
   const [assignmentStats, setAssignmentStats] = useState({
@@ -57,7 +57,6 @@ export default function DoctorDashboard() {
       } finally {
         if (!cancelled) setLoading(false)
       }
-
     }
 
     load()
@@ -82,13 +81,20 @@ export default function DoctorDashboard() {
   }
 
   if (loading) {
-    return <div className="text-center py-12">Loading dashboard...</div>
+    return (
+      <div className="p-6 flex items-center justify-center w-full flex-grow">
+        <p className="text-gray-600 font-medium">Loading dashboard...</p>
+      </div>
+    )
   }
 
   return (
-    <div className="px-4 py-6 bg-gray-50 min-h-screen">
+    <div className="px-4 py-6 w-full">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Doctor Dashboard</h1>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Doctor Dashboard</h1>
+          <p className="text-gray-600">Welcome back! Here&apos;s your practice overview</p>
+        </div>
 
         {statsError && (
           <div className="mb-6 rounded-md bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm">
@@ -96,41 +102,87 @@ export default function DoctorDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-600">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total patients</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
-                  {assignmentStats.total_patients_on_platform}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Registered on the platform</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Link to="/doctor/patients" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
+            <div className="flex items-center">
+              <Users className="h-8 w-8 text-blue-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">View Patients</h3>
+                <p className="text-sm text-gray-600">Browse and search patient database</p>
               </div>
-              <Users className="w-12 h-12 text-blue-600" />
             </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-emerald-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Your patients</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
-                  {assignmentStats.your_assigned_patients}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Approved access requests</p>
+          </Link>
+          <Link to="/medical-dashboard" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
+            <div className="flex items-center">
+              <Activity className="h-8 w-8 text-green-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">Health Analytics</h3>
+                <p className="text-sm text-gray-600">View health parameters and trends</p>
               </div>
-              <UserCheck className="w-12 h-12 text-emerald-500" />
             </div>
-          </div>
+          </Link>
+          <Link to="/chat" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
+            <div className="flex items-center">
+              <MessageCircle className="h-8 w-8 text-purple-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">Messages</h3>
+                <p className="text-sm text-gray-600">Chat with patients and consult online</p>
+              </div>
+            </div>
+          </Link>
+          <Link to="/doctor/profile" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
+            <div className="flex items-center">
+              <UserCheck className="h-8 w-8 text-red-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Profile</h3>
+                <p className="text-sm text-gray-600">Update your professional information</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center">
+              <Users className="h-8 w-8 text-teal-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Total patients</p>
+                <p className="text-2xl font-bold text-gray-900">{assignmentStats.total_patients_on_platform}</p>
+                <p className="text-xs text-gray-500 mt-1">Registered on the platform</p>
+              </div>
+            </div>
+          </div>
+
+          <Link to="/doctor/patients" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
+            <div className="flex items-center">
+              <UserCheck className="h-8 w-8 text-green-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Your patients</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-2xl font-bold text-gray-900">{assignmentStats.your_assigned_patients}</p>
+                  {pendingAccess.length > 0 && (
+                    <span className="text-xs font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full animate-pulse">
+                      {pendingAccess.length} pending
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Approved access requests</p>
+              </div>
+            </div>
+          </Link>
+        </div>
+
+        
         {pendingAccess.length > 0 && (
           <div className="bg-white rounded-lg shadow-md mb-8 border border-amber-200">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900">Pending patient access requests</h2>
             </div>
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-y divide-gray-250">
               {pendingAccess.map((req) => (
-                <li key={req.id} className="px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+                <li key={req.id} className="px-6 py-4 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
                   <div>
                     <p className="font-medium text-gray-900">{req.patient_name}</p>
                     <p className="text-xs text-gray-500">Request #{req.id}</p>
@@ -139,14 +191,14 @@ export default function DoctorDashboard() {
                     <button
                       type="button"
                       onClick={() => respondToRequest(req.id, 'accept')}
-                      className="px-3 py-1.5 rounded-md text-sm bg-green-600 text-white hover:bg-green-700"
+                      className="px-3 py-1.5 rounded-md text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
                     >
                       Accept
                     </button>
                     <button
                       type="button"
                       onClick={() => respondToRequest(req.id, 'reject')}
-                      className="px-3 py-1.5 rounded-md text-sm border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       Reject
                     </button>
@@ -157,54 +209,49 @@ export default function DoctorDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500">
-            <div className="flex items-center justify-between">
-              <div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Link to="/doctor/patients" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
+            <div className="flex items-center">
+              <TrendingUp className="h-8 w-8 text-green-600" />
+              <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Recent patients</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{stats.recent_patients}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.recent_patients}</p>
                 <p className="text-xs text-gray-500 mt-1">Last 7 days (new accounts)</p>
               </div>
-              <TrendingUp className="w-12 h-12 text-green-500" />
             </div>
-          </div>
+          </Link>
 
-          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-purple-500">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center">
+              <Calendar className="h-8 w-8 text-purple-600" />
+              <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Weekly Consultations</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
-                  {stats.weekly_consultations}
-                </p>
+                <p className="text-2xl font-bold text-gray-900">{stats.weekly_consultations}</p>
                 <p className="text-xs text-gray-500 mt-1">This week</p>
               </div>
-              <Calendar className="w-12 h-12 text-purple-500" />
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-red-500">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center">
+              <AlertTriangle className={`h-8 w-8 ${stats.critical_cases > 0 ? 'text-red-600 animate-pulse' : 'text-green-600'}`} />
+              <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Critical Cases</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{stats.critical_cases}</p>
+                <p className={`text-base font-bold mt-1 ${stats.critical_cases > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {stats.critical_cases === 0
+                    ? 'No critical cases'
+                    : `${stats.critical_cases} require attention`}
+                </p>
                 <p className="text-xs text-gray-500 mt-1">Abnormal values</p>
               </div>
-              <AlertTriangle className="w-12 h-12 text-red-500" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-indigo-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Reports</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total_reports}</p>
-              </div>
-              <FileText className="w-12 h-12 text-indigo-500" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-md mb-8">          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        
+        <div className="bg-white rounded-xl shadow-md mb-8">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900">Recent Patients</h2>
             <Link
               to="/doctor/patients"
@@ -232,7 +279,7 @@ export default function DoctorDashboard() {
                       <p className="text-sm text-gray-500">{patient.email}</p>
                       {patient.age && (
                         <p className="text-xs text-gray-400 mt-1">
-                          {patient.age} years • {patient.gender} • {patient.blood_group}
+                          {patient.age} years • {patient.gender ? patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1) : ''} • {patient.blood_group || '—'}
                         </p>
                       )}
                     </div>
@@ -242,35 +289,6 @@ export default function DoctorDashboard() {
               ))
             )}
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Link
-            to="/doctor/patients"
-            className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-2 border-transparent hover:border-blue-500"
-          >
-            <Users className="w-8 h-8 text-blue-500 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">View All Patients</h3>
-            <p className="text-sm text-gray-600">Browse and search patient database</p>
-          </Link>
-
-          <Link
-            to="/doctor/profile"
-            className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-2 border-transparent hover:border-blue-500"
-          >
-            <Activity className="w-8 h-8 text-blue-500 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Edit Profile</h3>
-            <p className="text-sm text-gray-600">Update your professional information</p>
-          </Link>
-
-          <Link
-            to="/reports"
-            className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-2 border-transparent hover:border-blue-500"
-          >
-            <FileText className="w-8 h-8 text-blue-500 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">View Reports</h3>
-            <p className="text-sm text-gray-600">Access all medical reports</p>
-          </Link>
         </div>
       </div>
     </div>

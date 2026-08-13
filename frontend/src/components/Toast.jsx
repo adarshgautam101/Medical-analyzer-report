@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react'
 import toast, { Toaster } from 'react-hot-toast'
 
-// Toast Context for global toast management
+
 const ToastContext = createContext()
 
 export const ToastProvider = ({ children }) => {
@@ -54,7 +54,7 @@ export const useToast = () => {
   return context
 }
 
-// Enhanced Toast Component (alternative to react-hot-toast)
+
 export const Toast = ({ id, message, type = 'info', onClose, duration = 4000 }) => {
   const [isVisible, setIsVisible] = useState(true)
 
@@ -98,7 +98,7 @@ export const Toast = ({ id, message, type = 'info', onClose, duration = 4000 }) 
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setIsVisible(false)
-      setTimeout(() => onClose(id), 300) // Allow exit animation
+      setTimeout(() => onClose(id), 300) 
     }, duration)
 
     return () => clearTimeout(timer)
@@ -135,7 +135,7 @@ export const Toast = ({ id, message, type = 'info', onClose, duration = 4000 }) 
   )
 }
 
-// Toast Manager Component
+
 export const ToastManager = () => {
   const [toasts, setToasts] = useState([])
 
@@ -164,7 +164,7 @@ export const ToastManager = () => {
   )
 }
 
-// Convenience functions for different toast types
+
 export const toastSuccess = (message, duration) => toast.success(message, { duration })
 export const toastError = (message, duration) => toast.error(message, { duration })
 export const toastWarning = (message, duration) => toast(message, {

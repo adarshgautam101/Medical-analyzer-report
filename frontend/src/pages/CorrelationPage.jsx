@@ -16,22 +16,22 @@ import {
 } from 'recharts'
 import { useToast } from '../components/Toast'
 
-// Color scale function for heatmap
+
 const getCorrelationColor = (value) => {
   const absValue = Math.abs(value)
   if (absValue >= 0.7) {
-    // Strong correlation
+    
     return value > 0 ? '#185FA5' : '#D85A30'
   }
   if (absValue >= 0.4) {
-    // Moderate correlation
+    
     return value > 0 ? '#4A90E2' : '#F07C52'
   }
   if (absValue >= 0.15) {
-    // Weak correlation
+    
     return value > 0 ? '#A8D8FF' : '#F5B8A5'
   }
-  // Neutral
+  
   return '#F1EFE8'
 }
 
@@ -54,7 +54,7 @@ export default function CorrelationPage() {
     showToast('Error loading correlation data: ' + (error?.message || 'Unknown error'), 'error')
   }
 
-  // Empty state
+  
   if (!isLoading && (!data?.parameters || data.parameters.length < 2)) {
     return (
       <div className="px-4 py-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
@@ -86,7 +86,7 @@ export default function CorrelationPage() {
   return (
     <div className="px-4 py-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
+        
         <button
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium mb-4"
@@ -103,7 +103,7 @@ export default function CorrelationPage() {
           Analysis of relationships between laboratory parameters from your medical reports.
         </p>
 
-        {/* Loading State */}
+        
         {isLoading && (
           <div className="bg-white rounded-xl shadow-md p-12 text-center">
             <Loader className="w-8 h-8 text-purple-500 animate-spin mx-auto mb-4" />
@@ -111,7 +111,7 @@ export default function CorrelationPage() {
           </div>
         )}
 
-        {/* Error State */}
+        
         {error && !isLoading && (
           <div className="bg-white rounded-xl shadow-md p-8 mb-8">
             <div className="flex items-start gap-4">
@@ -124,7 +124,7 @@ export default function CorrelationPage() {
           </div>
         )}
 
-        {/* Heatmap */}
+        
         {!isLoading && data?.parameters && data.parameters.length >= 2 && (
           <div className="bg-white rounded-xl shadow-md p-6 mb-8 overflow-x-auto">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Correlation Matrix</h2>
@@ -136,7 +136,7 @@ export default function CorrelationPage() {
                 border: '1px solid #e5e7eb',
               }}
             >
-              {/* Header row */}
+              
               <div
                 style={{
                   padding: '12px 8px',
@@ -170,10 +170,10 @@ export default function CorrelationPage() {
                 </div>
               ))}
 
-              {/* Data rows */}
+              
               {data.parameters.map((rowParam, rowIdx) => (
                 <div key={`row-${rowIdx}`} style={{ display: 'contents' }}>
-                  {/* Row label */}
+                  
                   <div
                     style={{
                       padding: '12px 8px',
@@ -190,7 +190,7 @@ export default function CorrelationPage() {
                     {rowParam}
                   </div>
 
-                  {/* Cells */}
+                  
                   {data.parameters.map((colParam, colIdx) => {
                     const value = data.matrix[rowIdx][colIdx]
                     return (
@@ -219,7 +219,7 @@ export default function CorrelationPage() {
               ))}
             </div>
 
-            {/* Legend */}
+            
             <div className="mt-6 pt-6 border-t border-gray-200">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Color Scale</h3>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
@@ -279,7 +279,7 @@ export default function CorrelationPage() {
           </div>
         )}
 
-        {/* Top Pairs Bar Chart */}
+        
         {!isLoading && data?.pairs && data.pairs.length > 0 && (
           <div className="bg-white rounded-xl shadow-md p-6 mb-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Top Correlations</h2>
@@ -303,7 +303,7 @@ export default function CorrelationPage() {
           </div>
         )}
 
-        {/* Refresh Button */}
+        
         <div className="flex justify-center mb-8">
           <button
             onClick={() => refetch()}

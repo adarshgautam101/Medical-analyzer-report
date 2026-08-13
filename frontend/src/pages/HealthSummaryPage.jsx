@@ -43,7 +43,7 @@ export default function HealthSummaryPage() {
     showToast('Error loading health summary: ' + (error?.message || 'Unknown error'), 'error')
   }
 
-  // Build chart data based on selected report
+  
   const chartData = data?.parameters
     ? selectedReport === 'all'
       ? data.parameters.map((p) => ({
@@ -60,12 +60,12 @@ export default function HealthSummaryPage() {
           }))
     : []
 
-  // Get unique report names for tabs
+  
   const reportNames =
     data?.reports?.map((r) => r.report_name) || []
   const uniqueReports = [...new Set(reportNames)]
 
-  // Empty state
+  
   if (!isLoading && (!data?.reports || data.reports.length === 0)) {
     return (
       <div className="px-4 py-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
@@ -97,7 +97,7 @@ export default function HealthSummaryPage() {
   return (
     <div className="px-4 py-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
+        
         <button
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium mb-4"
@@ -114,7 +114,7 @@ export default function HealthSummaryPage() {
           Detailed overview of your health metrics and trends from your medical reports.
         </p>
 
-        {/* Stats Tiles */}
+        
         {!isLoading && data && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-white rounded-lg shadow-md p-6">
@@ -145,7 +145,7 @@ export default function HealthSummaryPage() {
           </div>
         )}
 
-        {/* Loading State */}
+        
         {isLoading && (
           <div className="bg-white rounded-xl shadow-md p-12 text-center">
             <Loader className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-4" />
@@ -153,7 +153,7 @@ export default function HealthSummaryPage() {
           </div>
         )}
 
-        {/* Error State */}
+        
         {error && !isLoading && (
           <div className="bg-white rounded-xl shadow-md p-8 mb-8">
             <div className="flex items-start gap-4">
@@ -166,7 +166,7 @@ export default function HealthSummaryPage() {
           </div>
         )}
 
-        {/* Tab Buttons */}
+        
         {!isLoading && data?.reports && data.reports.length > 0 && (
           <div className="mb-6 flex flex-wrap gap-2">
             <button
@@ -195,7 +195,7 @@ export default function HealthSummaryPage() {
           </div>
         )}
 
-        {/* Chart */}
+        
         {!isLoading && chartData && chartData.length > 0 && (
           <div className="bg-white rounded-xl shadow-md p-6 mb-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">
@@ -217,7 +217,7 @@ export default function HealthSummaryPage() {
           </div>
         )}
 
-        {/* Abnormal Values Insights */}
+        
         {!isLoading && data?.parameters && (
           <>
             {data.parameters.some((p) => p.is_abnormal) && (
@@ -254,7 +254,7 @@ export default function HealthSummaryPage() {
           </>
         )}
 
-        {/* Refresh Button */}
+        
         <div className="flex justify-center mt-8">
           <button
             onClick={() => refetch()}

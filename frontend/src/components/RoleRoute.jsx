@@ -5,7 +5,7 @@ export default function RoleRoute({ children, requiredRole }) {
   const { user, loading } = useAuth()
 
   if (loading) {
-    return null // Block rendering until auth is determined
+    return null 
   }
 
   if (!user) {

@@ -4,12 +4,14 @@ import { useAuth } from '../contexts/AuthContext'
 import { FormInput } from '../components/FormComponents'
 import { useToast } from '../components/Toast'
 import { motion } from 'framer-motion'
+import { Stethoscope, HeartPulse } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [selectedRole, setSelectedRole] = useState('patient')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, logout } = useAuth()
   const navigate = useNavigate()
   const { showToast } = useToast()
 
@@ -18,15 +20,29 @@ export default function Login() {
     setLoading(true)
 
     const result = await login(email, password)
-    setLoading(false)
 
     if (result.success) {
+      if (result.user.role !== selectedRole) {
+        logout()
+        setLoading(false)
+        const roleLabel = selectedRole === 'doctor' ? 'Doctor' : 'Patient'
+        const expectedLabel = result.user.role === 'doctor' ? 'Doctor' : 'Patient'
+        showToast(`Role mismatch: You attempted to log in as a ${roleLabel}, but your account is registered as a ${expectedLabel}.`, 'error')
+        return
+      }
+      setLoading(false)
       showToast('Welcome back! Login successful.', 'success')
       navigate('/dashboard')
     } else {
+      setLoading(false)
       showToast(result.error || 'Login failed. Please try again.', 'error')
     }
   }
+
+  const roles = [
+    { value: 'patient', label: 'Patient', icon: HeartPulse, color: 'blue' },
+    { value: 'doctor', label: 'Doctor', icon: Stethoscope, color: 'teal' },
+  ]
 
   return (
     <motion.div
@@ -51,6 +67,35 @@ export default function Login() {
             </Link>
           </p>
         </motion.div>
+
+        
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3, delay: 0.15 }}
+          className="flex gap-3"
+        >
+          {roles.map((role) => {
+            const Icon = role.icon
+            const isActive = selectedRole === role.value
+            return (
+              <button
+                key={role.value}
+                type="button"
+                onClick={() => setSelectedRole(role.value)}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 text-sm font-semibold transition-all duration-200 ${
+                  isActive
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <Icon className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                Login as {role.label}
+              </button>
+            )
+          })}
+        </motion.div>
+
         <motion.form
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -93,7 +138,7 @@ export default function Login() {
                 Signing in...
               </div>
             ) : (
-              'Sign in'
+              `Sign in as ${selectedRole === 'doctor' ? 'Doctor' : 'Patient'}`
             )}
           </motion.button>
         </motion.form>
@@ -101,4 +146,3 @@ export default function Login() {
     </motion.div>
   )
 }
-

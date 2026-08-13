@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import Skeleton from 'react-loading-skeleton'
 import 'react-loading-skeleton/dist/skeleton.css'
 
-// Enhanced Card Skeleton
+
 export const CardSkeleton = ({ className = "" }) => (
   <div className={`bg-white rounded-xl shadow-md p-6 animate-pulse ${className}`}>
     <div className="flex items-center mb-3">
@@ -14,7 +14,7 @@ export const CardSkeleton = ({ className = "" }) => (
   </div>
 )
 
-// Dashboard Skeleton
+
 export const DashboardSkeleton = () => (
   <div className="px-4 py-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
     <div className="max-w-7xl mx-auto">
@@ -50,7 +50,7 @@ export const DashboardSkeleton = () => (
   </div>
 )
 
-// Chart Skeleton
+
 export const ChartSkeleton = () => (
   <div className="bg-white rounded-xl shadow-md p-6">
     <div className="flex items-center justify-between mb-4">
@@ -61,7 +61,7 @@ export const ChartSkeleton = () => (
   </div>
 )
 
-// Table Skeleton
+
 export const TableSkeleton = ({ rows = 5 }) => (
   <div className="bg-white rounded-xl shadow-md">
     <div className="px-6 py-4 border-b border-gray-200">
@@ -83,7 +83,7 @@ export const TableSkeleton = ({ rows = 5 }) => (
   </div>
 )
 
-// Form Skeleton
+
 export const FormSkeleton = () => (
   <div className="bg-white rounded-xl shadow-md p-6 space-y-6">
     <div>

@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, FileDown, Loader, BarChart2 } from 'lucide-react'
-import { downloadLabValuesCsv } from './Reports'
+import { ArrowLeft, Loader, BarChart2 } from 'lucide-react'
 
 export default function ReportViewer() {
   const { id } = useParams()
@@ -12,8 +11,7 @@ export default function ReportViewer() {
   const [trendChart, setTrendChart] = useState(null)
   const [trendLoading, setTrendLoading] = useState(null)
   const [trendError, setTrendError] = useState('')
-  const [downloadError, setDownloadError] = useState('')
-  const [exporting, setExporting] = useState(false)
+
 
   const [filterParam, setFilterParam] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -21,6 +19,7 @@ export default function ReportViewer() {
   const [filteredLabs, setFilteredLabs] = useState([])
   const [filteredLoading, setFilteredLoading] = useState(false)
   const [filteredError, setFilteredError] = useState('')
+  const [historyParams, setHistoryParams] = useState([])
 
   const [comparisonSelection, setComparisonSelection] = useState(new Set())
   const [comparisonUrl, setComparisonUrl] = useState(null)
@@ -49,6 +48,19 @@ export default function ReportViewer() {
   }, [fetchReport])
 
   useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const response = await api.get('/api/lab-values')
+        const unique = [...new Set((response.data || []).map((lv) => lv.parameter_name))]
+        setHistoryParams(unique)
+      } catch (error) {
+        console.error('Error fetching lab history params:', error)
+      }
+    }
+    fetchHistory()
+  }, [])
+
+  useEffect(() => {
     return () => {
       if (trendChart?.url) URL.revokeObjectURL(trendChart.url)
       if (comparisonUrl) URL.revokeObjectURL(comparisonUrl)
@@ -59,6 +71,27 @@ export default function ReportViewer() {
     () => [...new Set((report?.lab_values || []).map((lv) => lv.parameter_name))],
     [report]
   )
+
+  const allParameterNames = useMemo(() => {
+    const fromReport = (report?.lab_values || []).map((lv) => lv.parameter_name)
+    const combined = [...new Set([
+      ...fromReport,
+      ...historyParams,
+      'HbA1c',
+      'Total Cholesterol',
+      'HDL Cholesterol',
+      'LDL Cholesterol',
+      'Triglycerides',
+      'Haemoglobin',
+      'WBC',
+      'RBC',
+      'Platelets',
+      'Glucose',
+      'TSH',
+      'Creatinine'
+    ])]
+    return combined.filter(Boolean).sort()
+  }, [report, historyParams])
 
   const toggleComparisonParam = (name) => {
     setComparisonSelection((prev) => {
@@ -71,8 +104,8 @@ export default function ReportViewer() {
 
   const loadComparisonChart = async () => {
     const names = [...comparisonSelection]
-    if (names.length < 2) {
-      setComparisonError('Select at least two parameters to compare.')
+    if (names.length < 1) {
+      setComparisonError('Select at least one parameter to view.')
       return
     }
     setComparisonError('')
@@ -122,31 +155,7 @@ export default function ReportViewer() {
     }
   }
 
-  const handleDownload = async () => {
-    setDownloadError('')
-    try {
-      const response = await api.get(`/api/reports/${id}/download`, {
-        responseType: 'blob',
-      })
-      const blob =
-        response.data instanceof Blob
-          ? response.data
-          : new Blob([response.data])
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = report.file_name
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Error downloading report:', error)
-      setDownloadError(
-        error.response?.data?.detail || 'Error downloading report. Please try again.'
-      )
-    }
-  }
+
 
   const loadTrendChart = async (parameterName) => {
     setTrendError('')
@@ -176,19 +185,7 @@ export default function ReportViewer() {
     }
   }
 
-  const handleExportCsv = async () => {
-    setExporting(true)
-    try {
-      await downloadLabValuesCsv()
-    } catch (error) {
-      console.error('CSV export failed:', error)
-      alert(
-        error.response?.data?.detail || 'Could not export CSV. Please try again.'
-      )
-    } finally {
-      setExporting(false)
-    }
-  }
+
 
   if (loading) {
     return <div className="text-center py-12">Loading report...</div>
@@ -227,37 +224,9 @@ export default function ReportViewer() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={exporting}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-          >
-            {exporting ? (
-              <Loader className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <FileDown className="w-4 h-4 mr-2" />
-            )}
-            Export CSV
-          </button>
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Download
-          </button>
-        </div>
       </div>
-      {downloadError && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
-          {downloadError}
-        </div>
-      )}
 
-      {/* AI Summary */}
+      
       {report.ai_summary && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-2">AI Summary</h2>
@@ -265,15 +234,15 @@ export default function ReportViewer() {
         </div>
       )}
 
-      {/* Compare parameters (this report) */}
-      {parameterNames.length >= 2 && (
+      
+      {parameterNames.length >= 1 && (
         <div className="bg-white rounded-lg shadow mb-6 p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
             <BarChart2 className="w-5 h-5" />
-            Compare parameters
+            Universal Standard Range Comparison
           </h2>
           <p className="text-sm text-gray-600 mb-3">
-            Select two or more parameters from this report, then load the comparison chart.
+            Select one or more parameters to compare patient values against the universal standard ranges.
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
             {parameterNames.map((name) => (
@@ -297,7 +266,7 @@ export default function ReportViewer() {
             className="inline-flex items-center px-4 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-sm"
           >
             {comparisonLoading && <Loader className="w-4 h-4 mr-2 animate-spin" />}
-            Show comparison chart
+            Show range comparison
           </button>
           {comparisonError && (
             <p className="mt-2 text-sm text-red-700">{comparisonError}</p>
@@ -310,7 +279,7 @@ export default function ReportViewer() {
         </div>
       )}
 
-      {/* Lab Values (this report) */}
+      
       {report.lab_values && report.lab_values.length > 0 && (
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="px-6 py-4 border-b border-gray-200">
@@ -346,33 +315,29 @@ export default function ReportViewer() {
                     }
                   >
                     <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
-                        lv.is_abnormal ? 'text-red-700' : 'text-gray-900'
-                      }`}
+                      className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${lv.is_abnormal ? 'text-red-700' : 'text-gray-900'
+                        }`}
                     >
                       {lv.parameter_name}
                     </td>
                     <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${
-                        lv.is_abnormal ? 'text-red-700' : 'text-green-700'
-                      }`}
+                      className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${lv.is_abnormal ? 'text-red-700' : 'text-green-700'
+                        }`}
                     >
                       {lv.value} {lv.unit}
                     </td>
                     <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm ${
-                        lv.is_abnormal ? 'text-red-600' : 'text-gray-500'
-                      }`}
+                      className={`px-6 py-4 whitespace-nowrap text-sm ${lv.is_abnormal ? 'text-red-600' : 'text-gray-500'
+                        }`}
                     >
                       {lv.reference_range}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
-                        className={`px-2 py-1 text-xs rounded ${
-                          lv.is_abnormal
+                        className={`px-2 py-1 text-xs rounded ${lv.is_abnormal
                             ? 'bg-red-100 text-red-800'
                             : 'bg-green-100 text-green-800'
-                        }`}
+                          }`}
                       >
                         {lv.is_abnormal ? 'Abnormal' : 'Normal'}
                       </span>
@@ -404,7 +369,7 @@ export default function ReportViewer() {
         </div>
       )}
 
-      {/* Trend Chart */}
+      
       {trendChart && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">
@@ -414,7 +379,7 @@ export default function ReportViewer() {
         </div>
       )}
 
-      {/* Filtered lab values (GET /api/lab-values) */}
+      
       <div className="bg-white rounded-lg shadow mb-6">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">Lab history & filters</h2>
@@ -432,7 +397,7 @@ export default function ReportViewer() {
                 onChange={(e) => setFilterParam(e.target.value)}
               >
                 <option value="">All parameters</option>
-                {parameterNames.map((name) => (
+                {allParameterNames.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -515,17 +480,7 @@ export default function ReportViewer() {
         </div>
       </div>
 
-      {/* Extracted Text */}
-      {report.extracted_text && (
-        <div className="bg-white rounded-lg shadow p-6 mt-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Extracted Text</h2>
-          <div className="bg-gray-50 rounded p-4 max-h-96 overflow-y-auto">
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">
-              {report.extracted_text}
-            </pre>
-          </div>
-        </div>
-      )}
+      
     </div>
   )
 }

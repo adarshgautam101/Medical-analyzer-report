@@ -1,14 +1,7 @@
 import React from 'react'
 import { Lightbulb, AlertTriangle, TrendingUp, Clipboard } from 'lucide-react'
 
-/**
- * InsightsPanel Component
- * Displays medical insights and recommendations
- * 
- * Props:
- *   - insights: object with { summary, trend_insight, risk_insight, recommendation }
- *   - parameter: string (parameter name, optional)
- */
+
 export default function InsightsPanel({ insights = {}, parameter }) {
   const {
     summary,
@@ -26,7 +19,7 @@ export default function InsightsPanel({ insights = {}, parameter }) {
       </h3>
 
       <div className="space-y-6">
-        {/* Summary */}
+        
         {summary && (
           <div className="pb-4 border-b border-gray-200">
             <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -37,7 +30,7 @@ export default function InsightsPanel({ insights = {}, parameter }) {
           </div>
         )}
 
-        {/* Trend Insight */}
+        
         {trend_insight && (
           <div className="pb-4 border-b border-gray-200">
             <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -48,7 +41,7 @@ export default function InsightsPanel({ insights = {}, parameter }) {
           </div>
         )}
 
-        {/* Risk Insight */}
+        
         {risk_insight && (
           <div className="pb-4 border-b border-gray-200">
             <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -59,7 +52,7 @@ export default function InsightsPanel({ insights = {}, parameter }) {
           </div>
         )}
 
-        {/* Recommendation */}
+        
         {recommendation && (
           <div>
             <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -72,7 +65,7 @@ export default function InsightsPanel({ insights = {}, parameter }) {
           </div>
         )}
 
-        {/* Empty State */}
+        
         {!summary && !trend_insight && !risk_insight && !recommendation && (
           <p className="text-sm text-gray-500 italic">No insights available at this time.</p>
         )}

@@ -1,0 +1,191 @@
+import path from 'path';
+import fs from 'fs';
+import { Report, LabValue, PatientDoctorAccess } from '../models/index.js';
+import { processReportInBackground } from '../utils/parser.js';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../errors/AppError.js';
+import { logger } from '../utils/logger.js';
+
+const UPLOAD_DIR = 'uploads';
+
+const checkDoctorAccess = async (patientId, doctorId) => {
+  const allowedStatuses = ['approved', 'accepted'];
+  const access = await PatientDoctorAccess.findOne({
+    patient: patientId,
+    doctor: doctorId,
+    status: { $in: allowedStatuses },
+  });
+  return access !== null;
+};
+
+export const uploadReport = async (user, file) => {
+  if (user.role !== 'patient') {
+    throw new ForbiddenError('Only patients can upload reports');
+  }
+
+  if (!file) {
+    throw new BadRequestError('No file uploaded');
+  }
+
+  const report = new Report({
+    user: user.id,
+    fileName: file.filename,
+    filePath: file.path,
+    fileType: file.mimetype,
+    ocrStatus: 'pending',
+  });
+
+  await report.save();
+
+  
+  processReportInBackground(report._id, report.filePath);
+
+  logger.info(`Report uploaded: ${report._id} by user ${user.id}`);
+
+  return {
+    id: report._id.toString(),
+    file_name: report.fileName,
+    status: 'uploaded',
+    ocr_status: 'processing',
+  };
+};
+
+export const getReports = async (user) => {
+  let reports = [];
+
+  if (user.role === 'doctor') {
+    const approvedAccess = await PatientDoctorAccess.find({
+      doctor: user.id,
+      status: { $in: ['approved', 'accepted'] },
+    });
+    const patientIds = approvedAccess.map((access) => access.patient);
+
+    reports = await Report.find({ user: { $in: patientIds } })
+      .populate('category')
+      .sort({ uploadDate: -1 });
+  } else {
+    reports = await Report.find({ user: user.id })
+      .populate('category')
+      .sort({ uploadDate: -1 });
+  }
+
+  return reports.map((r) => ({
+    id: r._id.toString(),
+    file_name: r.fileName,
+    upload_date: r.uploadDate.toISOString(),
+    ocr_status: r.ocrStatus,
+    ai_summary: r.aiSummary,
+    category: r.category ? r.category.name : null,
+  }));
+};
+
+export const getSummary = async (user) => {
+  let patientIds = [];
+
+  if (user.role === 'doctor') {
+    const approvedAccess = await PatientDoctorAccess.find({
+      doctor: user.id,
+      status: { $in: ['approved', 'accepted'] },
+    });
+    patientIds = approvedAccess.map((access) => access.patient);
+  } else {
+    patientIds = [user.id];
+  }
+
+  const reportQuery = { user: { $in: patientIds } };
+  const totalReports = await Report.countDocuments(reportQuery);
+
+  const recentReports = await Report.find(reportQuery)
+    .populate('category')
+    .sort({ uploadDate: -1 })
+    .limit(3);
+
+  const allReports = await Report.find(reportQuery);
+  const reportIds = allReports.map((r) => r._id);
+
+  const abnormalCount = await LabValue.countDocuments({
+    report: { $in: reportIds },
+    isAbnormal: true,
+  });
+
+  return {
+    total_reports: totalReports,
+    abnormal_count: abnormalCount,
+    recent_reports: recentReports.map((r) => ({
+      id: r._id.toString(),
+      file_name: r.fileName,
+      upload_date: r.uploadDate.toISOString(),
+      ocr_status: r.ocrStatus,
+      ai_summary: r.aiSummary,
+      category: r.category ? r.category.name : null,
+    })),
+  };
+};
+
+export const getReportDetails = async (user, reportId) => {
+  const report = await Report.findById(reportId).populate('category');
+  if (!report) {
+    throw new NotFoundError('Report not found');
+  }
+
+  if (user.role === 'patient' && report.user.toString() !== user.id) {
+    throw new ForbiddenError('Access denied');
+  } else if (user.role === 'doctor') {
+    const hasAccess = await checkDoctorAccess(report.user, user.id);
+    if (!hasAccess) {
+      throw new ForbiddenError('Access denied');
+    }
+  }
+
+  const labValues = await LabValue.find({ report: report._id });
+
+  return {
+    id: report._id.toString(),
+    file_name: report.fileName,
+    upload_date: report.uploadDate.toISOString(),
+    ocr_status: report.ocrStatus,
+    ai_summary: report.aiSummary,
+    extracted_text: report.extractedText,
+    category: report.category ? report.category.name : null,
+    lab_values: labValues.map((lv) => ({
+      id: lv._id.toString(),
+      parameter_name: lv.parameterName,
+      value: lv.value,
+      unit: lv.unit,
+      reference_range: lv.referenceRange,
+      is_abnormal: lv.isAbnormal,
+    })),
+  };
+};
+
+export const deleteReport = async (user, reportId) => {
+  if (user.role !== 'patient') {
+    throw new ForbiddenError('Only patients can delete reports');
+  }
+
+  const report = await Report.findById(reportId);
+  if (!report) {
+    throw new NotFoundError('Report not found');
+  }
+
+  if (report.user.toString() !== user.id) {
+    throw new ForbiddenError('Access denied');
+  }
+
+  
+  if (report.filePath) {
+    try {
+      await fs.promises.unlink(report.filePath);
+    } catch (err) {
+      logger.warn(`File deletion failed or file not found at ${report.filePath}: ${err.message}`);
+    }
+  }
+
+  await LabValue.deleteMany({ report: report._id });
+  await Report.findByIdAndDelete(report._id);
+
+  logger.info(`Report ${reportId} deleted by user ${user.id}`);
+
+  return { message: 'Report deleted successfully' };
+};
+
+

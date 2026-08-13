@@ -4,20 +4,7 @@ import RiskBadge from './RiskBadge'
 import Skeleton from 'react-loading-skeleton'
 import 'react-loading-skeleton/dist/skeleton.css'
 
-/**
- * ParameterCard Component
- * Displays a card with parameter information including latest value, trend, and risk
- * 
- * Props:
- *   - parameter: string (parameter name, e.g., "HbA1c")
- *   - latestValue: number
- *   - unit: string
- *   - trend: string ('Increasing', 'Decreasing', 'Stable')
- *   - riskLevel: string ('LOW', 'MEDIUM', 'HIGH')
- *   - confidence: number (0-100)
- *   - isLoading: boolean
- *   - onClick: function
- */
+
 export default function ParameterCard({
   parameter,
   latestValue,
@@ -55,7 +42,7 @@ export default function ParameterCard({
       onClick={onClick}
       className="w-full text-left bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow hover:border-gray-300 cursor-pointer"
     >
-      {/* Header */}
+      
       <div className="flex justify-between items-start mb-4">
         <div>
           <p className="text-sm font-medium text-gray-600">{parameter}</p>
@@ -63,7 +50,7 @@ export default function ParameterCard({
         <ChevronRight className="w-5 h-5 text-gray-400" />
       </div>
 
-      {/* Latest Value */}
+      
       <div className="mb-4">
         <div className="flex items-baseline gap-1">
           <span className="text-3xl font-bold text-gray-900">{latestValue?.toFixed(2) || 'N/A'}</span>
@@ -71,7 +58,7 @@ export default function ParameterCard({
         </div>
       </div>
 
-      {/* Trend and Risk */}
+      
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           {getTrendIcon()}

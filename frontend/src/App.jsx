@@ -19,13 +19,15 @@ import MedicalDashboard from './pages/MedicalDashboard'
 import Layout from './components/Layout'
 import { ToastProvider } from './components/Toast'
 import RoleRoute from './components/RoleRoute'
+import Chat from './pages/Chat'
+import ErrorBoundary from './components/ErrorBoundary'
 
-// Create a client
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      cacheTime: 1000 * 60 * 10, // 10 minutes
+      staleTime: 1000 * 60 * 5, 
+      cacheTime: 1000 * 60 * 10, 
     },
   },
 })
@@ -60,6 +62,11 @@ function AppRoutes() {
         }
       >
         <Route index element={<Navigate to="/dashboard" />} />
+        <Route path="chat" element={<Chat />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="reports/:id" element={<ReportViewer />} />
+        <Route path="analytics/health-summary" element={<HealthSummaryPage />} />
+        <Route path="analytics/correlation" element={<CorrelationPage />} />
         {user?.role === 'doctor' ? (
           <>
             <Route
@@ -102,25 +109,7 @@ function AppRoutes() {
             <Route path="medical-dashboard" element={<MedicalDashboard />} />
             <Route path="find-doctors" element={<FindDoctors />} />
             <Route path="profile" element={<PatientProfile />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="reports/:id" element={<ReportViewer />} />
             <Route path="medicines" element={<Medicines />} />
-            <Route
-              path="analytics/health-summary"
-              element={
-                <RoleRoute requiredRole="patient">
-                  <HealthSummaryPage />
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="analytics/correlation"
-              element={
-                <RoleRoute requiredRole="patient">
-                  <CorrelationPage />
-                </RoleRoute>
-              }
-            />
           </>
         )}
       </Route>
@@ -130,15 +119,17 @@ function AppRoutes() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <Router>
-        <AuthProvider>
-          <ToastProvider>
-            <AppRoutes />
-          </ToastProvider>
-        </AuthProvider>
-      </Router>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <AuthProvider>
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
+          </AuthProvider>
+        </Router>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 

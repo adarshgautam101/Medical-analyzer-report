@@ -1,17 +1,9 @@
 import React from 'react'
 import { AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
-/**
- * RiskBadge Component
- * Displays a color-coded badge indicating risk level
- * 
- * Props:
- *   - riskLevel: string ('LOW', 'MEDIUM', 'HIGH')
- *   - confidence: number (0-100, optional)
- *   - size: 'sm' | 'md' | 'lg' (default: 'md')
- */
+
 export default function RiskBadge({ riskLevel, confidence, size = 'md' }) {
-  // Determine colors based on risk level
+  
   const getRiskColor = () => {
     switch (riskLevel?.toUpperCase()) {
       case 'LOW':

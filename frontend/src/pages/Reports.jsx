@@ -3,21 +3,11 @@ import { useDropzone } from 'react-dropzone'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useAuth } from '../contexts/AuthContext'
-import { Upload, FileText, Trash2, Download, Loader, FileDown, AlertCircle } from 'lucide-react'
+import { Upload, FileText, Trash2, Loader, AlertCircle, BarChart2, TrendingUp, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
 
-export async function downloadLabValuesCsv() {
-  const response = await api.get('/api/export/csv', { responseType: 'blob' })
-  const blob =
-    response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'lab_values.csv'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
+const PAGE_SIZE = 10
+
+
 
 export default function Reports() {
   const { user } = useAuth()
@@ -30,15 +20,10 @@ export default function Reports() {
   const [listError, setListError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [exporting, setExporting] = useState(false)
+  const [page, setPage] = useState(1)
   const pollingRef = useRef(null)
 
-  // Redirect doctors away from reports page
-  useEffect(() => {
-    if (user?.role === 'doctor') {
-      navigate('/dashboard')
-    }
-  }, [user?.role, navigate])
+  
 
   const fetchReports = useCallback(async () => {
     try {
@@ -107,6 +92,14 @@ export default function Reports() {
     if (acceptedFiles.length === 0) return
 
     const file = acceptedFiles[0]
+
+    
+    const existingNames = reports.map((r) => r.file_name.toLowerCase())
+    if (existingNames.includes(file.name.toLowerCase())) {
+      alert('This file has already been uploaded. Please choose a different file.')
+      return
+    }
+
     setUploading(true)
     setUploadProgress(0)
 
@@ -132,7 +125,7 @@ export default function Reports() {
       setUploading(false)
       setUploadProgress(0)
     }
-  }, [fetchReports])
+  }, [fetchReports, reports])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -159,48 +152,20 @@ export default function Reports() {
     }
   }
 
-  const handleDownload = async (reportId, fileName) => {
-    try {
-      const response = await api.get(`/api/reports/${reportId}/download`, {
-        responseType: 'blob',
-      })
-      const blob =
-        response.data instanceof Blob
-          ? response.data
-          : new Blob([response.data])
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', fileName)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Error downloading report:', error)
-      alert(
-        error.response?.data?.detail || 'Error downloading report. Please try again.'
-      )
-    }
-  }
 
-  const handleExportCsv = async () => {
-    setExporting(true)
-    try {
-      await downloadLabValuesCsv()
-    } catch (error) {
-      console.error('CSV export failed:', error)
-      alert(
-        error.response?.data?.detail || 'Could not export CSV. Please try again.'
-      )
-    } finally {
-      setExporting(false)
-    }
-  }
 
   const filteredReports = categoryFilter
     ? reports.filter((r) => (r.category || '') === categoryFilter)
     : reports
+
+  
+  const totalPages = Math.ceil(filteredReports.length / PAGE_SIZE)
+  const paginatedReports = filteredReports.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  
+  useEffect(() => {
+    setPage(1)
+  }, [categoryFilter])
 
   if (loading) {
     return <div className="text-center py-12">Loading reports...</div>
@@ -227,19 +192,20 @@ export default function Reports() {
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={exporting}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          <Link
+            to="/analytics/health-summary"
+            className="inline-flex items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
           >
-            {exporting ? (
-              <Loader className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <FileDown className="w-4 h-4 mr-2" />
-            )}
-            Export CSV
-          </button>
+            <TrendingUp className="w-4 h-4 mr-2" />
+            Health Summary
+          </Link>
+          <Link
+            to="/analytics/correlation"
+            className="inline-flex items-center px-4 py-2 border border-purple-300 text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100"
+          >
+            <Activity className="w-4 h-4 mr-2" />
+            Lab Correlation
+          </Link>
         </div>
       </div>
 
@@ -249,44 +215,45 @@ export default function Reports() {
         </div>
       )}
 
-      {/* Upload Area */}
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
-          isDragActive
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
-        } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
-      >
-        <input {...getInputProps()} />
-        {uploading ? (
-          <div>
-            <Loader className="w-12 h-12 mx-auto mb-4 text-blue-500 animate-spin" />
-            <p className="text-gray-600">Uploading... {uploadProgress}%</p>
-          </div>
-        ) : (
-          <div>
-            <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p className="text-lg font-medium text-gray-700 mb-2">
-              {isDragActive ? 'Drop the file here' : 'Drag & drop a report file here'}
-            </p>
-            <p className="text-sm text-gray-500">or click to select (PDF, PNG, JPG)</p>
-          </div>
-        )}
-      </div>
+      
+      {user?.role === 'patient' && (
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
+            isDragActive
+              ? 'border-blue-500 bg-blue-50'
+              : 'border-gray-300 hover:border-gray-400'
+          } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+        >
+          <input {...getInputProps()} />
+          {uploading ? (
+            <div>
+              <Loader className="w-12 h-12 mx-auto mb-4 text-blue-500 animate-spin" />
+              <p className="text-gray-600">Uploading... {uploadProgress}%</p>
+            </div>
+          ) : (
+            <div>
+              <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium text-gray-700 mb-2">
+                {isDragActive ? 'Drop the file here' : 'Drag & drop a report file here'}
+              </p>
+              <p className="text-sm text-gray-500">or click to select (PDF, PNG, JPG)</p>
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Reports List */}
+      
       <div className="mt-8 bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-xl font-semibold text-gray-900">All Reports</h2>
-          {categoryFilter ? (
-            <span className="text-sm text-gray-500">
-              Showing {filteredReports.length} of {reports.length}
-            </span>
-          ) : null}
+          <span className="text-sm text-gray-500">
+            {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
+            {categoryFilter ? ` in "${categoryFilter}"` : ''}
+          </span>
         </div>
         <div className="divide-y divide-gray-200">
-          {filteredReports.length === 0 ? (
+          {paginatedReports.length === 0 ? (
             <div className="px-6 py-12 text-center text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
               <p>
@@ -294,12 +261,12 @@ export default function Reports() {
                   ? 'No reports uploaded yet.'
                   : 'No reports match this category.'}
               </p>
-              {reports.length === 0 && (
+              {reports.length === 0 && user?.role === 'patient' && (
                 <p className="text-sm mt-2">Upload your first medical report above.</p>
               )}
             </div>
           ) : (
-            filteredReports.map((report) => (
+            paginatedReports.map((report) => (
               <div
                 key={report.id}
                 className="px-6 py-4 hover:bg-gray-50 transition-colors"
@@ -337,34 +304,51 @@ export default function Reports() {
                     >
                       {report.ocr_status}
                     </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        handleDownload(report.id, report.file_name)
-                      }}
-                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-5 h-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        handleDelete(report.id)
-                      }}
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+
+                    {user?.role === 'patient' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          handleDelete(report.id)
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             ))
           )}
         </div>
+
+        
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+            </button>
+            <span className="text-sm text-gray-600">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Next <ChevronRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

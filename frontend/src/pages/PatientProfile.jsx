@@ -25,7 +25,7 @@ export default function PatientProfile() {
   }, [])
 
   useEffect(() => {
-    // Calculate BMI when height or weight changes
+    
     if (profile.height_cm && profile.weight_kg) {
       const height_m = parseFloat(profile.height_cm) / 100
       const weight_kg = parseFloat(profile.weight_kg)
@@ -114,7 +114,7 @@ export default function PatientProfile() {
           </div>
         )}
 
-        {/* BMI Display */}
+        
         {bmi && (
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
             <div className="flex items-center justify-between">
@@ -133,7 +133,7 @@ export default function PatientProfile() {
         )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-md p-6">
-          {/* Basic Information */}
+          
           <div className="mb-8">
             <div className="flex items-center mb-4">
               <User className="w-6 h-6 text-blue-500 mr-2" />
@@ -192,7 +192,7 @@ export default function PatientProfile() {
             </div>
           </div>
 
-          {/* Physical Measurements */}
+          
           <div className="mb-8">
             <div className="flex items-center mb-4">
               <Activity className="w-6 h-6 text-blue-500 mr-2" />
@@ -228,7 +228,7 @@ export default function PatientProfile() {
             </div>
           </div>
 
-          {/* Health Information */}
+          
           <div className="mb-8">
             <div className="flex items-center mb-4">
               <Heart className="w-6 h-6 text-blue-500 mr-2" />
@@ -277,7 +277,7 @@ export default function PatientProfile() {
             </div>
           </div>
 
-          {/* Emergency Contact */}
+          
           <div className="mb-8">
             <div className="flex items-center mb-4">
               <AlertCircle className="w-6 h-6 text-blue-500 mr-2" />

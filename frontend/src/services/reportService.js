@@ -1,6 +1,6 @@
 import api from '../utils/api'
 
-// Report Service
+
 export const getReports = () =>
   api.get('/api/reports').then((res) => res.data)
 

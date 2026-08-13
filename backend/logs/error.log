@@ -1,2 +1,0 @@
-2026-07-02 03:48:25 | ERROR    | 15916 | MainThread | medical_report_analyzer.__main__ | main.py:18 | ERROR log is working
-2026-07-02 03:48:25 | ERROR    | 15916 | MainThread | medical_report_analyzer.__main__ | main.py:23 | Exception logging is working

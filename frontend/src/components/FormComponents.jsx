@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Check, X, AlertCircle } from 'lucide-react'
 
-// Enhanced Form Input with validation states
+
 export const FormInput = ({
   label,
   type = 'text',
@@ -54,7 +54,7 @@ export const FormInput = ({
           {...props}
         />
 
-        {/* Status Icons */}
+        
         <div className="absolute right-3 top-2.5 flex items-center gap-1">
           {error && <X className="w-5 h-5 text-red-500" />}
           {success && <Check className="w-5 h-5 text-green-500" />}
@@ -70,7 +70,7 @@ export const FormInput = ({
         </div>
       </div>
 
-      {/* Error Message */}
+      
       {error && (
         <motion.div
           initial={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -82,7 +82,7 @@ export const FormInput = ({
         </motion.div>
       )}
 
-      {/* Success Message */}
+      
       {success && !error && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -97,7 +97,7 @@ export const FormInput = ({
   )
 }
 
-// Enhanced Textarea
+
 export const FormTextarea = ({
   label,
   value,
@@ -163,7 +163,7 @@ export const FormTextarea = ({
   )
 }
 
-// Enhanced Select
+
 export const FormSelect = ({
   label,
   value,
@@ -217,7 +217,7 @@ export const FormSelect = ({
           ))}
         </motion.select>
 
-        {/* Custom dropdown arrow */}
+        
         <div className="absolute right-3 top-2.5 pointer-events-none">
           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -242,7 +242,7 @@ export const FormSelect = ({
   )
 }
 
-// Form Field Group
+
 export const FormFieldGroup = ({ title, description, children, className = "" }) => (
   <motion.div
     className={`space-y-4 ${className}`}
@@ -260,7 +260,7 @@ export const FormFieldGroup = ({ title, description, children, className = "" })
   </motion.div>
 )
 
-// Form Actions
+
 export const FormActions = ({ children, className = "" }) => (
   <motion.div
     className={`flex gap-3 pt-6 border-t border-gray-200 ${className}`}

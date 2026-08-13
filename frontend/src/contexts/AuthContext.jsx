@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 
 const AuthContext = createContext()
@@ -6,8 +7,9 @@ const AuthContext = createContext()
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
 
-  // Initialize auth state
+  
   useEffect(() => {
     try {
       const token = sessionStorage.getItem('token')
@@ -17,7 +19,7 @@ export function AuthProvider({ children }) {
         setUser(JSON.parse(userData))
       }
     } catch (err) {
-      // Corrupted storage cleanup
+      
       sessionStorage.removeItem('token')
       sessionStorage.removeItem('user')
       setUser(null)
@@ -26,9 +28,10 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // Login
+  
   const login = async (email, password) => {
     try {
+      queryClient.clear()
       const response = await api.post('/api/auth/login', { email, password })
       const { access_token, user: userData } = response.data
 
@@ -36,7 +39,7 @@ export function AuthProvider({ children }) {
       sessionStorage.setItem('user', JSON.stringify(userData))
 
       setUser(userData)
-      return { success: true }
+      return { success: true, user: userData }
     } catch (error) {
       return {
         success: false,
@@ -45,9 +48,10 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Register
+  
   const register = async (email, password, fullName, role, doctorPayload = null) => {
     try {
+      queryClient.clear()
       const body = {
         email,
         password,
@@ -75,8 +79,9 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Logout
+  
   const logout = () => {
+    queryClient.clear()
     sessionStorage.removeItem('token')
     sessionStorage.removeItem('user')
     setUser(null)

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Heart, Pill, AlertCircle, TrendingUp, FileText, Activity, Loader, Stethoscope, UserCheck } from 'lucide-react'
+import { Heart, Pill, AlertCircle, TrendingUp, FileText, Activity, Loader, Stethoscope, UserCheck, Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '../components/Toast'
 import {
@@ -19,57 +19,57 @@ export default function PatientDashboard() {
   const { showToast } = useToast()
   const queryClient = useQueryClient()
 
-  // Profile query
+  
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
     queryFn: getProfile,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, 
     onError: (error) => {
       showToast(error.response?.data?.detail || 'Failed to load profile', 'error')
     }
   })
 
-  // Medicines query
+  
   const { data: medicines, isLoading: medicinesLoading } = useQuery({
     queryKey: ['medicines'],
     queryFn: getMedicines,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, 
     onError: (error) => {
       showToast('Failed to load medicines', 'error')
     }
   })
 
-  // Reports summary query (replaces N+1 calls)
+  
   const { data: reportsSummary, isLoading: reportsLoading } = useQuery({
     queryKey: ['reports-summary'],
     queryFn: getReportsSummary,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, 
     onError: (error) => {
       showToast(error.response?.data?.detail || 'Failed to load reports', 'error')
     }
   })
 
-  // Discovery stats query
+  
   const { data: discovery = { total_doctors_on_platform: 0, your_active_doctors: 0 }, isLoading: discoveryLoading } = useQuery({
     queryKey: ['discovery-stats'],
     queryFn: getDiscoveryStats,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, 
     onError: (error) => {
       console.error('Discovery stats error:', error)
     }
   })
 
-  // Doctor access query
+  
   const { data: doctorAccess = [], isLoading: doctorAccessLoading, refetch: refetchDoctorAccess } = useQuery({
     queryKey: ['doctor-access'],
     queryFn: getDoctorAccess,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, 
     onError: (error) => {
       showToast('Failed to load doctor access', 'error')
     }
   })
 
-  // Mutations for doctor access
+  
   const grantAccessMutation = useMutation({
     mutationFn: grantDoctorAccess,
     onSuccess: () => {
@@ -94,10 +94,10 @@ export default function PatientDashboard() {
     }
   })
 
-  // Combined loading state
+  
   const isLoading = profileLoading || medicinesLoading || reportsLoading || discoveryLoading || doctorAccessLoading
 
-  // Calculate stats from aggregated data
+  
   const stats = {
     activeMedicines: medicines?.filter((m) => m.status === 'current').length || 0,
     abnormalValues: reportsSummary?.abnormal_count || 0,
@@ -105,7 +105,15 @@ export default function PatientDashboard() {
     recentReports: reportsSummary?.recent_reports || [],
   }
 
-  // Handle doctor access actions
+  const approvedCount = doctorAccess?.filter(
+    (row) => row.status === 'accepted' || row.status === 'approved'
+  ).length || 0
+
+  const pendingCount = doctorAccess?.filter(
+    (row) => row.status === 'pending'
+  ).length || 0
+
+  
   const handleGrantAccess = (doctorId) => {
     grantAccessMutation.mutate(doctorId)
   }
@@ -118,21 +126,61 @@ export default function PatientDashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto">
+      <div className="p-6 flex items-center justify-center w-full flex-grow">
+        <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Patient Dashboard</h1>
-          <p>Loading dashboard...</p>
+          <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="px-4 py-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
+    <div className="px-4 py-6 w-full">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Your Health Dashboard</h1>
           <p className="text-gray-600">Welcome back! Here&apos;s your health overview</p>
+        </div>
+
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Link to="/find-doctors" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
+            <div className="flex items-center">
+              <Search className="h-8 w-8 text-blue-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">Find Doctors</h3>
+                <p className="text-sm text-gray-600">Search by name, category, and specialty</p>
+              </div>
+            </div>
+          </Link>
+          <Link to="/reports" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
+            <div className="flex items-center">
+              <FileText className="h-8 w-8 text-green-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">View Reports</h3>
+                <p className="text-sm text-gray-600">See all your medical reports and lab results</p>
+              </div>
+            </div>
+          </Link>
+          <Link to="/medicines" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
+            <div className="flex items-center">
+              <Pill className="h-8 w-8 text-purple-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">Manage Medicines</h3>
+                <p className="text-sm text-gray-600">Track your current and past medications</p>
+              </div>
+            </div>
+          </Link>
+          <Link to="/profile" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
+            <div className="flex items-center">
+              <Heart className="h-8 w-8 text-red-600" />
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900">Update Profile</h3>
+                <p className="text-sm text-gray-600">Keep your health information up to date</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -146,20 +194,27 @@ export default function PatientDashboard() {
               </div>
             </div>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
+          <Link to="/find-doctors" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
             <div className="flex items-center">
               <UserCheck className="h-8 w-8 text-green-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Your active doctors</p>
-                <p className="text-2xl font-bold text-gray-900">{discovery.your_active_doctors}</p>
-                <p className="text-xs text-gray-500">Approved access</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-2xl font-bold text-gray-900">{approvedCount}</p>
+                  {pendingCount > 0 && (
+                    <span className="text-xs font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full animate-pulse">
+                      {pendingCount} pending
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Manage access permissions</p>
               </div>
             </div>
-          </div>
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
+          <Link to="/medicines" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
             <div className="flex items-center">
               <Pill className="h-8 w-8 text-green-600" />
               <div className="ml-4">
@@ -167,20 +222,24 @@ export default function PatientDashboard() {
                 <p className="text-2xl font-bold text-gray-900">{stats.activeMedicines}</p>
               </div>
             </div>
-          </div>
+          </Link>
 
           <div className="bg-white p-6 rounded-lg shadow-md">
             <div className="flex items-center">
-              <AlertCircle className="h-8 w-8 text-red-600" />
+              <AlertCircle className={`h-8 w-8 ${stats.abnormalValues > 0 ? 'text-red-600 animate-pulse' : 'text-green-600'}`} />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Abnormal Values</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.abnormalValues}</p>
-                <p className="text-xs text-gray-500">Across all reports</p>
+                <p className={`text-base font-bold mt-1 ${stats.abnormalValues > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {stats.abnormalValues === 0 
+                    ? 'No abnormalities detected' 
+                    : `${stats.abnormalValues} require attention`}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Across all reports</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
+          <Link to="/reports" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 block">
             <div className="flex items-center">
               <FileText className="h-8 w-8 text-blue-600" />
               <div className="ml-4">
@@ -188,7 +247,7 @@ export default function PatientDashboard() {
                 <p className="text-2xl font-bold text-gray-900">{stats.totalReports}</p>
               </div>
             </div>
-          </div>
+          </Link>
 
           {profile && profile.bmi && (
             <div className="bg-white p-6 rounded-lg shadow-md">
@@ -212,111 +271,7 @@ export default function PatientDashboard() {
           )}
         </div>
 
-<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <Link to="/analytics/health-summary" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg block">
-            <div className="flex items-center">
-              <TrendingUp className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-900">Health Summary</h3>
-                <p className="text-sm text-gray-600">View detailed health insights and trends based on your reports.</p>
-              </div>
-            </div>
-          </Link>
-
-          <Link to="/analytics/correlation" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg block">
-            <div className="flex items-center">
-              <Activity className="h-8 w-8 text-purple-600" />
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-900">Lab Correlation</h3>
-                <p className="text-sm text-gray-600">Analyze relationships between different lab parameters.</p>
-              </div>
-            </div>
-          </Link>
-        </div>
-        <div className="bg-white rounded-xl shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Doctor Access Management
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Doctors can only view your reports, lab values, and notes while access
-            is <span className="font-medium">approved</span>. If you revoke access,
-            they lose visibility immediately.
-          </p>
-
-          {doctorAccessLoading ? (
-            <div className="py-6 text-center text-gray-600">Loading access...</div>
-          ) : doctorAccess.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-gray-600 mb-3">No doctor access requests yet.</p>
-              <Link
-                to="/find-doctors"
-                className="text-blue-600 hover:text-blue-800 font-medium"
-              >
-                Find Doctors
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {doctorAccess.map((row) => {
-                const status = row.status === 'accepted' ? 'approved' : row.status
-                const badgeClass =
-                  status === 'approved'
-                    ? 'bg-green-100 text-green-800'
-                    : status === 'pending'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : status === 'revoked'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-gray-100 text-gray-700'
-
-                return (
-                  <div
-                    key={row.id}
-                    className="flex flex-wrap items-center justify-between gap-3 border border-gray-200 rounded-lg px-4 py-3"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {row.doctor_name || `Doctor #${row.doctor_id}`}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Status:{' '}
-                        <span className={`px-2 py-0.5 rounded ${badgeClass}`}>
-                          {status}
-                        </span>
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2">
-                      {(status === 'approved' || status === 'pending') && (
-                        <button
-                          type="button"
-                          disabled={revokeAccessMutation.isLoading}
-                          onClick={() => handleRevokeAccess(row.id)}
-                          className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                        >
-                          {revokeAccessMutation.isLoading ? 'Revoking...' : 'Revoke'}
-                        </button>
-                      )}
-
-                      {(status === 'rejected' || status === 'revoked') && (
-                        <button
-                          type="button"
-                          disabled={grantAccessMutation.isLoading}
-                          onClick={() => handleGrantAccess(row.doctor_id)}
-                          className="px-3 py-1.5 rounded-md text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                        >
-                          {grantAccessMutation.isLoading
-                            ? 'Requesting...'
-                            : 'Grant Access'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
+        
         <div className="bg-white rounded-xl shadow-md mb-8">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900">Recent Reports</h2>
@@ -371,45 +326,6 @@ export default function PatientDashboard() {
               ))
             )}
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Link to="/find-doctors" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
-            <div className="flex items-center">
-              <Stethoscope className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-900">Find Doctors</h3>
-                <p className="text-sm text-gray-600">Search by name, category, and specialty</p>
-              </div>
-            </div>
-          </Link>
-          <Link to="/reports" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
-            <div className="flex items-center">
-              <FileText className="h-8 w-8 text-green-600" />
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-900">View Reports</h3>
-                <p className="text-sm text-gray-600">See all your medical reports and lab results</p>
-              </div>
-            </div>
-          </Link>
-          <Link to="/medicines" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
-            <div className="flex items-center">
-              <Pill className="h-8 w-8 text-purple-600" />
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-900">Manage Medicines</h3>
-                <p className="text-sm text-gray-600">Track your current and past medications</p>
-              </div>
-            </div>
-          </Link>
-          <Link to="/profile" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
-            <div className="flex items-center">
-              <Heart className="h-8 w-8 text-red-600" />
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-900">Update Profile</h3>
-                <p className="text-sm text-gray-600">Keep your health information up to date</p>
-              </div>
-            </div>
-          </Link>
         </div>
       </div>
     </div>

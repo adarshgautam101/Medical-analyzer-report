@@ -11,16 +11,7 @@ import {
 } from 'recharts'
 import { format, parseISO } from 'date-fns'
 
-/**
- * TrendChart Component
- * Displays a line chart showing parameter trend over time
- * 
- * Props:
- *   - data: array of {date, value} objects
- *   - parameter: string (parameter name for label)
- *   - unit: string (unit of measurement, optional)
- *   - height: number (chart height in px, default: 300)
- */
+
 export default function TrendChart({ data = [], parameter, unit, height = 300 }) {
   if (!data || data.length === 0) {
     return (
@@ -33,7 +24,7 @@ export default function TrendChart({ data = [], parameter, unit, height = 300 })
     )
   }
 
-  // Format data for recharts (parse ISO dates)
+  
   const chartData = data.map((item) => ({
     ...item,
     displayDate: format(parseISO(item.date), 'MMM dd'),
