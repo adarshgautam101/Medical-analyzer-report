@@ -569,4 +569,7 @@ This layout prepares you to discuss architectural details suitable for senior de
   - JWT tokens cannot be invalidated mid-lifespan without database token blacklists.
 - **Future Enhancements**:
   - Offload CPU-intensive OCR processes to worker threads or external serverless endpoints.
-  - Add a refresh token rotation flow.
+  - Add a refresh token rotation flow...
+
+
+  ##Thanks for reading
