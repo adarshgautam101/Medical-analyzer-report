@@ -18,7 +18,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   OPENROUTER_API_KEY: z.string().optional(),
   OLLAMA_BASE_URL: z.string().default('http://127.0.0.1:11434'),
-  OLLAMA_MODEL: z.string().default('qwen2.5:3b'),
+  OLLAMA_MODEL: z.string().default('llama3.2:3b'),
 });
 
 const _env = envSchema.safeParse(process.env);

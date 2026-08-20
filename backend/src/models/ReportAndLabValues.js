@@ -29,8 +29,12 @@ const reportSchema = new mongoose.Schema({
   },
   ocrStatus: {
     type: String,
-    enum: ['pending', 'processing', 'completed', 'failed'],
+    enum: ['pending', 'processing', 'completed', 'failed', 'invalid'],
     default: 'pending',
+  },
+  rejectionReason: {
+    type: String,
+    default: '',
   },
   extractedText: {
     type: String,
@@ -39,6 +43,10 @@ const reportSchema = new mongoose.Schema({
   aiSummary: {
     type: String,
     default: '',
+  },
+  aiSummaryData: {
+    type: Object,
+    default: null,
   },
   category: {
     type: mongoose.Schema.Types.ObjectId,
@@ -66,9 +74,19 @@ const labValueSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  valueType: {
+    type: String,
+    enum: ['numeric', 'qualitative'],
+    default: 'numeric',
+  },
   value: {
     type: Number,
-    required: true,
+    default: null,
+  },
+  qualitativeValue: {
+    type: String,
+    trim: true,
+    default: '',
   },
   unit: {
     type: String,
@@ -83,6 +101,29 @@ const labValueSchema = new mongoose.Schema({
   isAbnormal: {
     type: Boolean,
     default: false,
+  },
+  sourceText: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  confidence: {
+    type: Number,
+    default: 1.0,
+  },
+  pageNumber: {
+    type: Number,
+    default: 1,
+  },
+  referenceStatus: {
+    type: String,
+    enum: ['within', 'outside', 'unknown'],
+    default: 'unknown',
+  },
+  evidenceSource: {
+    type: String,
+    enum: ['same OCR line', 'adjacent OCR line', 'multi-line reconstruction', 'deterministic OCR normalization'],
+    default: 'same OCR line',
   },
 });
 

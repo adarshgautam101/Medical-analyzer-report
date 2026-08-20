@@ -220,7 +220,9 @@ The data layer uses Mongoose Object Document Mapper. Relationships are represent
 * `fileName`: String (required)
 * `filePath`: String (required)
 * `fileType`: String (required)
+* `status`: String (enum: `pending`, `completed`, `invalid`, `failed`, default: `pending`)
 * `ocrStatus`: String (enum: `pending`, `processing`, `completed`, `failed`, default: `pending`)
+* `rejectionReason`: String (Populated if non-medical document gate rejects file)
 * `extractedText`: String
 * `aiSummary`: String
 * `category`: ObjectId (ref: `ReportCategory`)
@@ -230,10 +232,17 @@ The data layer uses Mongoose Object Document Mapper. Relationships are represent
 #### 5. LabValue Schema (`ReportAndLabValues.js`)
 * `report`: ObjectId (ref: `Report`, required, Indexed)
 * `parameterName`: String (required, Indexed)
-* `value`: Number (required)
-* `unit`: String (required)
+* `value`: Number (required for quantitative parameters)
+* `unit`: String (required for quantitative parameters)
+* `valueType`: String (enum: `numeric`, `qualitative`, default: `numeric`)
+* `qualitativeValue`: String (e.g. `Negative`, `Positive`, `Reactive`, `Non-Reactive`)
+* `pageNumber`: Number (1-indexed page where parameter was extracted)
 * `referenceRange`: String
+* `referenceStatus`: String (enum: `within`, `outside`, `unknown`, default: `unknown`)
 * `isAbnormal`: Boolean (default: false)
+* `confidence`: Number (default: 1.0)
+* `sourceText`: String (Original supporting snippet from OCR)
+* `evidenceSource`: String (e.g. `same OCR line`, `multi-line reconstruction`, `qualitative parameter line`)
 
 #### 6. PatientDoctorAccess Schema (`AccessAndCategories.js`)
 * `patient`: ObjectId (ref: `User`, required, Indexed)
@@ -322,21 +331,43 @@ export const authenticateToken = async (req, res, next) => {
 
 ---
 
-## 9. Report Upload & Processing Flow
-
 ```
-[Upload PDF/Image] ──► Save metadata (OCR: pending)
+[Upload PDF/Image] ──► Save Report metadata (ocrStatus: pending)
                              │
                              ▼
-                    Return status: 200 (Success)
+                    Return status 200 Success to Client
                              │
-                             ├─► [Background Process Started]
-                             │   ├─► Read File Buffer
-                             │   ├─► OCR / PDF extract (pdf-parse / Tesseract.js)
-                             │   ├─► Match lines against standard ranges
-                             │   ├─► Call OpenRouter LLM for Summary
-                             │   └─► Save LabValues & update OCR status: completed
+                             ├─► [processReportInBackground Execution]
+                             │   ├── 1. File Header & Binary Validation: verifyFileHeader()
+                             │   ├── 2. Medical Classification Gate: isMedicalDocument() (Accept medical / Reject non-medical)
+                             │   ├── 3. Document Extraction: Scribe.js OCR (scribe.js-ocr Engine)
+                             │   ├── 4. OCR Normalization: Strips noise & cleans character misreads
+                             │   ├── 5. Document Classification: Laboratory / Pathology / Radiology / Prescription
+                             │   ├── 6. Multi-Line Reconstruction: Context-aware line merging (prevCleanRaw)
+                             │   ├── 7. Parameter Parsing: Numeric bio-assays & qualitative results (Positive/Negative)
+                             │   ├── 8. Safety & Rejection Audit: Rejects administrative numbers, dates & narrative ranges
+                             │   ├── 9. Reference Status Evaluation: Calculates within / outside / unknown deterministically
+                             │   ├── 10. Deduplication & DB Persistence: LabValue.deleteMany() -> LabValue.insertMany()
+                             │   ├── 11. AI Summarization: Local Ollama (llama3.2:3b) structured summary & observations
+                             │   └── 12. State Finalization: ocrStatus -> completed (or invalid / failed)
 ```
+
+### 9.1 Clinical Extraction & Safety Rules
+- **Medical Classification Gate (`isMedicalDocument`)**: Validates extracted text against clinical terms (lab analytes, diagnostic headers, clinical findings) versus non-medical patterns (invoices, resumes, bank statements). Documents flagged as non-medical are set to `status: invalid` with an explicit `rejectionReason` and skip expensive AI processing. Valid medical reports are accepted regardless of layout (structured, unstructured, scanned, two-column, landscape).
+- **Scribe.js OCR Integration**: Uses `scribe.js-ocr` for robust multi-page PDF rendering and text recognition.
+- **Context-Aware Multi-Line Reconstruction**: Dynamically reconstructs split parameters (e.g. parameter header line + value/unit line) using preceding line context (`prevCleanRaw.trim()`) while explicitly excluding administrative headers (`Department of Pathology`, `Hospital`, `Clinic`, etc.).
+- **Qualitative Parameter Extraction**: Supports qualitative results (e.g. *Oligoclonal Bands $\rightarrow$ Positive / Negative*, *HBsAg $\rightarrow$ Reactive*) mapping `valueType` to `qualitative` and preserving original page locations (`pageNumber`).
+- **Negative Extraction Safety & Rejection**:
+  - Rejects reference-only ranges inside narrative text (e.g., *"glucose levels in CSF (45-80 mg/dl)"*).
+  - Rejects administrative metadata (LAB IDs, receipt numbers, phone numbers, page numbers, patient demographics).
+  - Rejects malformed OCR snippets lacking parameter names.
+- **Reference Range Status Evaluation**: Deterministically calculates `referenceStatus` (`within`, `outside`, `unknown`) without fabricating unprovided reference ranges.
+
+### 9.2 MongoDB ↔ API ↔ Frontend Data Contract Invariants
+- **Count Equality Invariant**: For any report, `MongoDB count == API lab_values.length == Frontend labValues.length`.
+- **Deterministic UI Rendering**:
+  - If $N > 0$: Renders all $N$ parameters in the **Lab Values table** and **Universal Standard Range Comparison** without disappearing.
+  - If $N = 0$: Renders the structured empty-state message: *"No structured laboratory measurements were found in this report."*
 
 ---
 
@@ -371,12 +402,15 @@ $$r = \frac{\sum (x - \bar{x})(y - \bar{y})}{\sqrt{\sum (x - \bar{x})^2 \sum (y 
 
 ---
 
-## 13. AI/ML Summary Module
+Summaries and clinical observations are generated through a grounded, schema-validated local AI pipeline:
 
-Summaries are generated through a hybrid extraction pipeline:
-1. **Primary Model**: Calls OpenRouter API (`inclusionai/ling-3.0-flash:free`) passing JSON values or raw scanned blocks.
-2. **Deterministic Fallback**: If api keys are absent, network timeouts occur, or the API fails, it falls back to a rule-based algorithm:
-   `"Extracted report contains N key indicators. General status: abnormalities flagged / all normal."`
+1. **Local Ollama Inference Engine (`ollamaChat.js`)**: Connects to a locally running Ollama instance (`llama3.2:3b` model at `http://127.0.0.1:11434`) for offline privacy and fast zero-cost processing.
+2. **Strict Grounding & Diagnosis Rules**:
+   - **Deterministic Reference Alignment**: The model is forbidden from reinterpreting or contradicting application-calculated `referenceStatus` values (`within`, `outside`, `unknown`).
+   - **No Independent Disease Diagnoses**: The model cannot infer diseases (such as Multiple Sclerosis, Cancer, or Diabetes) unless explicitly stated as direct report text statements.
+   - **Administrative Exclusion**: Administrative metadata (hospital addresses, patient IDs, registration numbers) is filtered out.
+3. **Structured JSON Output Enforcement**: Enforces a strict JSON response schema returning a high-level `summary`, overall status (`Normal`, `Needs Review`, `Insufficient Information`), and array of grounded `observations` with exact supporting source text snippets.
+4. **Sanitization & Fallback Engine**: If Ollama is unavailable or returns malformed output, the system sanitizes content and applies rule-based summary fallbacks (`"Extracted report contains N key indicators. General status: abnormalities flagged / all normal."`).
 
 ---
 
@@ -439,7 +473,8 @@ export const requestLogger = (req, res, next) => {
    PORT=8000
    MONGODB_URI=mongodb://127.0.0.1:27017/medical_analyzer
    JWT_SECRET=super_secret_jwt_key_123!
-   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   OLLAMA_BASE_URL=http://127.0.0.1:11434
+   OLLAMA_MODEL=llama3.2:3b
    NODE_ENV=development
    ```
 
@@ -448,6 +483,24 @@ export const requestLogger = (req, res, next) => {
    cd backend
    npm install
    npm run dev
+   ```
+
+4. **Run Automated Test & Hardening Suites**:
+   To execute the comprehensive clinical extraction and UI data contract test suites:
+   ```bash
+   cd backend
+   
+   # Run Document Classification & Database Persistence Suite (Validates Non-Medical Rejection & Param Persistence)
+   node src/tests/classificationAndPersistence.test.js
+
+   # Run Production End-to-End Pipeline & Count Invariant Suite
+   node src/tests/productionPipelineEndToEnd.test.js
+   
+   # Run MongoDB -> API -> Frontend Data Contract Regression Suite
+   node src/tests/uiDataContractRegression.test.js
+   
+   # Run Full Clinical Extraction Regression Suite (PDF2, PDF4, PDF5)
+   node src/tests/fullExtractionRegression.test.js
    ```
 
 4. **Configure Frontend**:
@@ -566,10 +619,17 @@ This layout prepares you to discuss architectural details suitable for senior de
 
 - **Limitations**:
   - OCR performance is bound to single-threaded Node execution unless offloaded to worker threads.
+  - Quantitative lab parsers reject non-bioassay units (e.g. anatomical dimensions like `mm` in MRI reports) to protect blood lab dataset integrity.
   - JWT tokens cannot be invalidated mid-lifespan without database token blacklists.
 - **Future Enhancements**:
+  - **Multi-Modal Imaging & Radiology Model**: Introduce a dedicated `structuredFindings` model for MRI/CT/X-Ray anatomical measurements (e.g., disc heights, organ dimensions) to display alongside blood lab values without schema pollution.
   - Offload CPU-intensive OCR processes to worker threads or external serverless endpoints.
-  - Add a refresh token rotation flow...
+<<<<<<< HEAD
+  
 
 
   ##Thanks for reading
+=======
+  - Add a refresh token rotation flow.
+
+>>>>>>> 94f83e2 (scribe.js part)

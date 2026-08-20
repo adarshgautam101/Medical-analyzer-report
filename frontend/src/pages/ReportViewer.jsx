@@ -30,6 +30,9 @@ export default function ReportViewer() {
     setLoadError('')
     try {
       const response = await api.get(`/api/reports/${id}`)
+      console.log('[UI] route reportId =', id)
+      console.log('[UI] API response report.id =', response.data?.id)
+      console.log('[UI] API response lab_values.length =', response.data?.lab_values?.length)
       setReport(response.data)
     } catch (error) {
       console.error('Error fetching report:', error)
@@ -67,13 +70,24 @@ export default function ReportViewer() {
     }
   }, [trendChart, comparisonUrl])
 
+  const labValues = useMemo(() => {
+    return report?.lab_values ?? report?.labValues ?? []
+  }, [report])
+
   const parameterNames = useMemo(
-    () => [...new Set((report?.lab_values || []).map((lv) => lv.parameter_name))],
-    [report]
+    () => [...new Set(labValues.map((lv) => lv?.parameter_name || lv?.parameterName).filter(Boolean))],
+    [labValues]
   )
 
+  useEffect(() => {
+    if (report) {
+      console.log('[UI] normalized labValues.length =', labValues.length)
+      console.log('[UI] parameterNames =', parameterNames)
+    }
+  }, [report, labValues, parameterNames])
+
   const allParameterNames = useMemo(() => {
-    const fromReport = (report?.lab_values || []).map((lv) => lv.parameter_name)
+    const fromReport = labValues.map((lv) => lv?.parameter_name || lv?.parameterName).filter(Boolean)
     const combined = [...new Set([
       ...fromReport,
       ...historyParams,
@@ -91,7 +105,7 @@ export default function ReportViewer() {
       'Creatinine'
     ])]
     return combined.filter(Boolean).sort()
-  }, [report, historyParams])
+  }, [labValues, historyParams])
 
   const toggleComparisonParam = (name) => {
     setComparisonSelection((prev) => {
@@ -207,6 +221,63 @@ export default function ReportViewer() {
     )
   }
 
+  const getCleanAiSummary = () => {
+    if (!report || !report.ai_summary) return null;
+
+    let summaryText = report.ai_summary || '';
+    let summaryData = report.ai_summary_data || null;
+
+    if (typeof summaryText === 'string' && summaryText.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(summaryText.trim());
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.summary) summaryText = parsed.summary;
+          if (!summaryData) summaryData = parsed;
+        }
+      } catch (e) { }
+    }
+
+    if (summaryData && typeof summaryData.summary === 'string' && summaryData.summary.trim().startsWith('{')) {
+      try {
+        const inner = JSON.parse(summaryData.summary.trim());
+        if (inner && typeof inner === 'object' && inner.summary) {
+          summaryText = inner.summary;
+          summaryData = { ...summaryData, ...inner, summary: inner.summary };
+        }
+      } catch (e) { }
+    }
+
+    summaryText = summaryText
+      .replace(/^\{[\s\S]*"summary"\s*:\s*"/i, '')
+      .replace(/"\s*,\s*"overallStatus"[\s\S]*$/i, '')
+      .replace(/^"/, '')
+      .replace(/"$/, '')
+      .trim();
+
+    const rawObs = Array.isArray(summaryData?.observations) ? summaryData.observations : [];
+    const cleanObs = rawObs.map((obs) => {
+      if (typeof obs === 'string') {
+        return { text: obs.replace(/^\{\s*"text"\s*:\s*"/, '').replace(/"\s*,\s*".*$/, '').trim() };
+      }
+      return {
+        text: obs.text || '',
+        parameterName: obs.parameterName || '',
+        value: obs.value || '',
+        unit: obs.unit || '',
+        referenceRange: obs.referenceRange || '',
+        sourceText: obs.sourceText || '',
+      };
+    }).filter(o => o.text && o.text.trim().length > 0);
+
+    return {
+      summary: summaryText,
+      overallStatus: summaryData?.overallStatus || 'Needs Review',
+      observations: cleanObs,
+    };
+  };
+
+  const aiData = getCleanAiSummary();
+
   return (
     <div className="px-4 py-6">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -226,65 +297,128 @@ export default function ReportViewer() {
         </div>
       </div>
 
-      
-      {report.ai_summary && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">AI Summary</h2>
-          <p className="text-gray-700">{report.ai_summary}</p>
-        </div>
-      )}
 
-      
-      {parameterNames.length >= 1 && (
-        <div className="bg-white rounded-lg shadow mb-6 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
-            <BarChart2 className="w-5 h-5" />
-            Universal Standard Range Comparison
-          </h2>
-          <p className="text-sm text-gray-600 mb-3">
-            Select one or more parameters to compare patient values against the universal standard ranges.
-          </p>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {parameterNames.map((name) => (
-              <label
-                key={name}
-                className="inline-flex items-center gap-2 text-sm border rounded-md px-3 py-1 cursor-pointer hover:bg-gray-50"
+      {aiData && aiData.summary && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 mb-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <span className="text-xl">🤖</span> Document AI Analysis
+            </h2>
+            {aiData.overallStatus && (
+              <span
+                className={`px-3 py-1 text-xs font-semibold rounded-full border ${aiData.overallStatus === 'Normal'
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : aiData.overallStatus === 'Needs Review'
+                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                      : 'bg-gray-100 text-gray-800 border-gray-300'
+                  }`}
               >
-                <input
-                  type="checkbox"
-                  checked={comparisonSelection.has(name)}
-                  onChange={() => toggleComparisonParam(name)}
-                />
-                {name}
-              </label>
-            ))}
+                Status: {aiData.overallStatus}
+              </span>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={loadComparisonChart}
-            disabled={comparisonLoading}
-            className="inline-flex items-center px-4 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-sm"
-          >
-            {comparisonLoading && <Loader className="w-4 h-4 mr-2 animate-spin" />}
-            Show range comparison
-          </button>
-          {comparisonError && (
-            <p className="mt-2 text-sm text-red-700">{comparisonError}</p>
-          )}
-          {comparisonUrl && (
-            <div className="mt-4">
-              <img src={comparisonUrl} alt="Parameter comparison" className="w-full max-w-4xl rounded border" />
+
+          <p className="text-gray-800 leading-relaxed font-medium text-base mb-4 bg-white/80 backdrop-blur-xs p-4 rounded-lg border border-blue-100 shadow-2xs">
+            {aiData.summary}
+          </p>
+
+          {aiData.observations && aiData.observations.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-blue-200/60">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-blue-900 mb-3">
+                Key Clinical Observations ({aiData.observations.length})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {aiData.observations.map((obs, idx) => (
+                  <div key={idx} className="bg-white p-4 rounded-lg border border-blue-100 shadow-2xs hover:border-blue-300 transition-all">
+                    <div className="text-gray-900 text-sm font-semibold leading-snug">{obs.text}</div>
+                    {obs.parameterName && (
+                      <div className="mt-2.5 flex flex-wrap gap-2 text-xs">
+                        <span className="bg-blue-50 text-blue-700 font-medium px-2 py-0.5 rounded border border-blue-100">
+                          {obs.parameterName}
+                        </span>
+                        {obs.value && (
+                          <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                            Val: {obs.value} {obs.unit || ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {obs.sourceText && (
+                      <div className="text-xs text-gray-500 mt-2.5 pt-2 border-t border-gray-100 italic truncate">
+                        Source OCR: &quot;{obs.sourceText}&quot;
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      
-      {report.lab_values && report.lab_values.length > 0 && (
-        <div className="bg-white rounded-lg shadow mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Lab Values</h2>
-          </div>
+
+      {/* 2. Universal Standard Range Comparison */}
+      <div className="bg-white rounded-lg shadow mb-6 p-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+          <BarChart2 className="w-5 h-5 text-indigo-600" />
+          Universal Standard Range Comparison
+        </h2>
+        {parameterNames.length > 0 ? (
+          <>
+            <p className="text-sm text-gray-600 mb-3">
+              Select one or more parameters to compare patient values against the universal standard ranges.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {parameterNames.map((name) => (
+                <label
+                  key={name}
+                  className="inline-flex items-center gap-2 text-sm border rounded-md px-3 py-1 cursor-pointer hover:bg-gray-50 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={comparisonSelection.has(name)}
+                    onChange={() => toggleComparisonParam(name)}
+                  />
+                  {name}
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={loadComparisonChart}
+              disabled={comparisonLoading}
+              className="inline-flex items-center px-4 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium shadow-xs"
+            >
+              {comparisonLoading && <Loader className="w-4 h-4 mr-2 animate-spin" />}
+              Show range comparison
+            </button>
+            {comparisonError && (
+              <p className="mt-2 text-sm text-red-700">{comparisonError}</p>
+            )}
+            {comparisonUrl && (
+              <div className="mt-4">
+                <img src={comparisonUrl} alt="Parameter comparison" className="w-full max-w-4xl rounded border shadow-xs" />
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-500 italic bg-gray-50 p-4 rounded-md border border-gray-200">
+            No structured laboratory measurements available in this report for standard range comparison.
+          </p>
+        )}
+      </div>
+
+      {/* 3. Lab Values Section */}
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <h2 className="text-xl font-semibold text-gray-900">Lab Values</h2>
+          {labValues.length > 0 && (
+            <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full">
+              {labValues.length} Extracted {labValues.length === 1 ? 'Parameter' : 'Parameters'}
+            </span>
+          )}
+        </div>
+        {labValues.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -307,61 +441,78 @@ export default function ReportViewer() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {report.lab_values.map((lv) => (
-                  <tr
-                    key={lv.id}
-                    className={
-                      lv.is_abnormal ? 'bg-red-50 text-red-700' : ''
-                    }
-                  >
-                    <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${lv.is_abnormal ? 'text-red-700' : 'text-gray-900'
-                        }`}
+                {labValues.map((lv) => {
+                  const paramName = lv.parameter_name || lv.parameterName || '';
+                  const refRange = lv.reference_range || lv.referenceRange || '—';
+                  const isAbnormal = lv.is_abnormal ?? lv.isAbnormal;
+                  const refStatus = lv.reference_status || lv.referenceStatus || (isAbnormal ? 'outside' : 'within');
+
+                  return (
+                    <tr
+                      key={lv.id || paramName}
+                      className={isAbnormal ? 'bg-red-50/70 text-red-700' : ''}
                     >
-                      {lv.parameter_name}
-                    </td>
-                    <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${lv.is_abnormal ? 'text-red-700' : 'text-green-700'
-                        }`}
-                    >
-                      {lv.value} {lv.unit}
-                    </td>
-                    <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm ${lv.is_abnormal ? 'text-red-600' : 'text-gray-500'
-                        }`}
-                    >
-                      {lv.reference_range}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 text-xs rounded ${lv.is_abnormal
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-green-100 text-green-800'
-                          }`}
+                      <td
+                        className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${isAbnormal ? 'text-red-700' : 'text-gray-900'}`}
                       >
-                        {lv.is_abnormal ? 'Abnormal' : 'Normal'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        type="button"
-                        onClick={() => loadTrendChart(lv.parameter_name)}
-                        disabled={trendLoading === lv.parameter_name}
-                        className="text-blue-600 hover:text-blue-800 disabled:opacity-50 inline-flex items-center gap-1"
+                        {paramName}
+                      </td>
+                      <td
+                        className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${isAbnormal ? 'text-red-700' : 'text-emerald-700'}`}
                       >
-                        {trendLoading === lv.parameter_name && (
-                          <Loader className="w-3 h-3 animate-spin" />
-                        )}
-                        View Trend
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {lv.value} {lv.unit || ''}
+                      </td>
+                      <td
+                        className={`px-6 py-4 whitespace-nowrap text-sm ${isAbnormal ? 'text-red-600' : 'text-gray-500'}`}
+                      >
+                        {refRange}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${refStatus === 'outside' || isAbnormal
+                              ? 'bg-red-100 text-red-800 border-red-200'
+                              : refStatus === 'within'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : 'bg-gray-100 text-gray-800 border-gray-200'
+                            }`}
+                        >
+                          {refStatus === 'outside' || isAbnormal
+                            ? 'Abnormal / Outside'
+                            : refStatus === 'within'
+                              ? 'Within Range'
+                              : 'Unknown Range'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <button
+                          type="button"
+                          onClick={() => loadTrendChart(paramName)}
+                          disabled={trendLoading === paramName}
+                          className="text-blue-600 hover:text-blue-800 disabled:opacity-50 inline-flex items-center gap-1 font-medium"
+                        >
+                          {trendLoading === paramName && (
+                            <Loader className="w-3 h-3 animate-spin" />
+                          )}
+                          View Trend
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="p-8 text-center bg-gray-50/50 rounded-b-lg">
+            <p className="text-gray-700 font-medium text-base">
+              No structured laboratory measurements were found in this report.
+            </p>
+            <p className="text-sm text-gray-500 mt-1">
+              This document may be a narrative report, pathology report, or imaging finding without discrete numeric lab parameters.
+            </p>
+          </div>
+        )}
+      </div>
 
       {trendError && (
         <div className="mb-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
@@ -369,7 +520,7 @@ export default function ReportViewer() {
         </div>
       )}
 
-      
+
       {trendChart && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">
@@ -379,7 +530,7 @@ export default function ReportViewer() {
         </div>
       )}
 
-      
+
       <div className="bg-white rounded-lg shadow mb-6">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">Lab history & filters</h2>
@@ -480,7 +631,7 @@ export default function ReportViewer() {
         </div>
       </div>
 
-      
+
     </div>
   )
 }

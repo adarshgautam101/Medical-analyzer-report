@@ -36,8 +36,8 @@ export const uploadReport = async (user, file) => {
 
   await report.save();
 
-  
-  processReportInBackground(report._id, report.filePath);
+
+  processReportInBackground(report._id, report.filePath, file.mimetype);
 
   logger.info(`Report uploaded: ${report._id} by user ${user.id}`);
 
@@ -73,6 +73,7 @@ export const getReports = async (user) => {
     file_name: r.fileName,
     upload_date: r.uploadDate.toISOString(),
     ocr_status: r.ocrStatus,
+    rejection_reason: r.rejectionReason || '',
     ai_summary: r.aiSummary,
     category: r.category ? r.category.name : null,
   }));
@@ -115,6 +116,7 @@ export const getSummary = async (user) => {
       file_name: r.fileName,
       upload_date: r.uploadDate.toISOString(),
       ocr_status: r.ocrStatus,
+      rejection_reason: r.rejectionReason || '',
       ai_summary: r.aiSummary,
       category: r.category ? r.category.name : null,
     })),
@@ -138,21 +140,56 @@ export const getReportDetails = async (user, reportId) => {
 
   const labValues = await LabValue.find({ report: report._id });
 
+  logger.info(`[getReportDetails] Report: ${report._id}, ocrStatus: ${report.ocrStatus}, category: ${report.category ? report.category.name : 'Uncategorized'}, lab_values count: ${labValues.length}, parameters: ${labValues.map((lv) => lv.parameterName).join(', ')}`);
+
+  let cleanAiSummary = report.aiSummary || '';
+  let cleanAiSummaryData = report.aiSummaryData || null;
+
+  if (typeof cleanAiSummary === 'string' && cleanAiSummary.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(cleanAiSummary.trim());
+      if (parsed && typeof parsed === 'object') {
+        cleanAiSummary = parsed.summary || '';
+        if (!cleanAiSummaryData) {
+          cleanAiSummaryData = parsed;
+        }
+      }
+    } catch (e) { }
+  }
+
+  if (cleanAiSummaryData && typeof cleanAiSummaryData.summary === 'string' && cleanAiSummaryData.summary.trim().startsWith('{')) {
+    try {
+      const parsedInner = JSON.parse(cleanAiSummaryData.summary.trim());
+      if (parsedInner && typeof parsedInner === 'object' && parsedInner.summary) {
+        cleanAiSummary = parsedInner.summary;
+        cleanAiSummaryData = { ...cleanAiSummaryData, ...parsedInner, summary: parsedInner.summary };
+      }
+    } catch (e) { }
+  }
+
   return {
     id: report._id.toString(),
     file_name: report.fileName,
     upload_date: report.uploadDate.toISOString(),
     ocr_status: report.ocrStatus,
-    ai_summary: report.aiSummary,
+    rejection_reason: report.rejectionReason || '',
+    ai_summary: cleanAiSummary,
+    ai_summary_data: cleanAiSummaryData,
     extracted_text: report.extractedText,
     category: report.category ? report.category.name : null,
     lab_values: labValues.map((lv) => ({
       id: lv._id.toString(),
       parameter_name: lv.parameterName,
+      value_type: lv.valueType || 'numeric',
       value: lv.value,
+      qualitative_value: lv.qualitativeValue || '',
       unit: lv.unit,
       reference_range: lv.referenceRange,
       is_abnormal: lv.isAbnormal,
+      confidence: lv.confidence || 1.0,
+      page_number: lv.pageNumber || 1,
+      source_text: lv.sourceText || '',
+      reference_status: lv.referenceStatus || 'unknown',
     })),
   };
 };
@@ -171,7 +208,7 @@ export const deleteReport = async (user, reportId) => {
     throw new ForbiddenError('Access denied');
   }
 
-  
+
   if (report.filePath) {
     try {
       await fs.promises.unlink(report.filePath);

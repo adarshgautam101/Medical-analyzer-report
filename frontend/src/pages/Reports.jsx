@@ -23,7 +23,7 @@ export default function Reports() {
   const [page, setPage] = useState(1)
   const pollingRef = useRef(null)
 
-  
+
 
   const fetchReports = useCallback(async () => {
     try {
@@ -93,7 +93,7 @@ export default function Reports() {
 
     const file = acceptedFiles[0]
 
-    
+
     const existingNames = reports.map((r) => r.file_name.toLowerCase())
     if (existingNames.includes(file.name.toLowerCase())) {
       alert('This file has already been uploaded. Please choose a different file.')
@@ -158,11 +158,11 @@ export default function Reports() {
     ? reports.filter((r) => (r.category || '') === categoryFilter)
     : reports
 
-  
+
   const totalPages = Math.ceil(filteredReports.length / PAGE_SIZE)
   const paginatedReports = filteredReports.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  
+
   useEffect(() => {
     setPage(1)
   }, [categoryFilter])
@@ -215,15 +215,14 @@ export default function Reports() {
         </div>
       )}
 
-      
+
       {user?.role === 'patient' && (
         <div
           {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
-            isDragActive
+          className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${isDragActive
               ? 'border-blue-500 bg-blue-50'
               : 'border-gray-300 hover:border-gray-400'
-          } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+            } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
         >
           <input {...getInputProps()} />
           {uploading ? (
@@ -243,7 +242,7 @@ export default function Reports() {
         </div>
       )}
 
-      
+
       <div className="mt-8 bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-xl font-semibold text-gray-900">All Reports</h2>
@@ -292,15 +291,14 @@ export default function Reports() {
                   </Link>
                   <div className="flex items-center space-x-2">
                     <span
-                      className={`px-2 py-1 text-xs rounded ${
-                        report.ocr_status === 'completed'
+                      className={`px-2 py-1 text-xs rounded ${report.ocr_status === 'completed'
                           ? 'bg-green-100 text-green-800'
                           : report.ocr_status === 'processing' || report.ocr_status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : report.ocr_status === 'failed'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : report.ocr_status === 'failed'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-gray-100 text-gray-800'
+                        }`}
                     >
                       {report.ocr_status}
                     </span>
@@ -325,7 +323,7 @@ export default function Reports() {
           )}
         </div>
 
-        
+
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-center gap-3">
             <button
