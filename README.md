@@ -353,7 +353,7 @@ export const authenticateToken = async (req, res, next) => {
 ```
 
 ### 9.1 Clinical Extraction & Safety Rules
-- **Medical Classification Gate (`isMedicalDocument`)**: Validates extracted text against clinical terms (lab analytes, diagnostic headers, clinical findings) versus non-medical patterns (invoices, resumes, bank statements). Documents flagged as non-medical are set to `status: invalid` with an explicit `rejectionReason` and skip expensive AI processing. Valid medical reports are accepted regardless of layout (structured, unstructured, scanned, two-column, landscape).
+- **Medical Classification Gate (`isMedicalDocument`)**: Synchronously validates extracted text against clinical terms (lab analytes, diagnostic headers, clinical findings) versus non-medical patterns (invoices, resumes, bank statements). Non-medical uploads are immediately rejected at the API boundary with HTTP status 400 and machine-readable code `INVALID_MEDICAL_REPORT`, preventing non-medical files from persisting in MongoDB or polluting user report listings. The frontend renders an explicit "Invalid Report" modal explaining the rejection.
 - **Scribe.js OCR Integration**: Uses `scribe.js-ocr` for robust multi-page PDF rendering and text recognition.
 - **Context-Aware Multi-Line Reconstruction**: Dynamically reconstructs split parameters (e.g. parameter header line + value/unit line) using preceding line context (`prevCleanRaw.trim()`) while explicitly excluding administrative headers (`Department of Pathology`, `Hospital`, `Clinic`, etc.).
 - **Qualitative Parameter Extraction**: Supports qualitative results (e.g. *Oligoclonal Bands $\rightarrow$ Positive / Negative*, *HBsAg $\rightarrow$ Reactive*) mapping `valueType` to `qualitative` and preserving original page locations (`pageNumber`).
@@ -402,15 +402,19 @@ $$r = \frac{\sum (x - \bar{x})(y - \bar{y})}{\sqrt{\sum (x - \bar{x})^2 \sum (y 
 
 ---
 
+## 13. AI/ML Summary Module
+
 Summaries and clinical observations are generated through a grounded, schema-validated local AI pipeline:
 
 1. **Local Ollama Inference Engine (`ollamaChat.js`)**: Connects to a locally running Ollama instance (`llama3.2:3b` model at `http://127.0.0.1:11434`) for offline privacy and fast zero-cost processing.
-2. **Strict Grounding & Diagnosis Rules**:
-   - **Deterministic Reference Alignment**: The model is forbidden from reinterpreting or contradicting application-calculated `referenceStatus` values (`within`, `outside`, `unknown`).
-   - **No Independent Disease Diagnoses**: The model cannot infer diseases (such as Multiple Sclerosis, Cancer, or Diabetes) unless explicitly stated as direct report text statements.
-   - **Administrative Exclusion**: Administrative metadata (hospital addresses, patient IDs, registration numbers) is filtered out.
+2. **Strict Grounding & Authoritative Lab Data Rules**:
+   - **Structured Data Sole Source of Truth**: The structured lab parameters, values, reference ranges, and calculated statuses are the authoritative source of truth.
+   - **Reference Range Grounding**: When referring to "Within Range" parameters, the summary strictly uses phrasing such as *"within the reference range provided in the report"*, avoiding assumptions of universal or standard ranges.
+   - **Unknown Range Preservation**: Parameters with `Unknown Range` (null reference ranges) are strictly unclassified and cannot receive artificial or inferred ranges.
+   - **Raw Context Entity Blocking**: Parameters not present in the authoritative lab dataset (such as raw OCR artifacts like E.S.R.) are blocked from range classifications.
+   - **No Independent Disease Diagnoses**: The model cannot infer unstated diseases unless explicitly present in report text.
 3. **Structured JSON Output Enforcement**: Enforces a strict JSON response schema returning a high-level `summary`, overall status (`Normal`, `Needs Review`, `Insufficient Information`), and array of grounded `observations` with exact supporting source text snippets.
-4. **Sanitization & Fallback Engine**: If Ollama is unavailable or returns malformed output, the system sanitizes content and applies rule-based summary fallbacks (`"Extracted report contains N key indicators. General status: abnormalities flagged / all normal."`).
+4. **Sanitization & Fallback Engine**: Applies sentence-aware, structure-preserving sanitization (`sanitizeAndValidateAiSummary`) and applies rule-based summary fallbacks if AI inference times out or returns ungrounded statements.
 
 ---
 
@@ -490,6 +494,9 @@ export const requestLogger = (req, res, next) => {
    ```bash
    cd backend
    
+   # Run AI Summary Grounding & Classification Sanitizer Regression Suite
+   node src/tests/aiSummaryGroundingRegression.test.js
+
    # Run Document Classification & Database Persistence Suite (Validates Non-Medical Rejection & Param Persistence)
    node src/tests/classificationAndPersistence.test.js
 
@@ -624,12 +631,4 @@ This layout prepares you to discuss architectural details suitable for senior de
 - **Future Enhancements**:
   - **Multi-Modal Imaging & Radiology Model**: Introduce a dedicated `structuredFindings` model for MRI/CT/X-Ray anatomical measurements (e.g., disc heights, organ dimensions) to display alongside blood lab values without schema pollution.
   - Offload CPU-intensive OCR processes to worker threads or external serverless endpoints.
-<<<<<<< HEAD
-  
-
-
-  ##Thanks for reading
-=======
   - Add a refresh token rotation flow.
-
->>>>>>> 94f83e2 (scribe.js part)
