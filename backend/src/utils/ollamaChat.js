@@ -3,7 +3,7 @@ import { logger } from './logger.js';
 
 export const callOllamaChat = async (messages) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  const timeoutId = setTimeout(() => controller.abort(), 180000);
 
   try {
     logger.info(`[OllamaChat] Sending chat request to local model: ${env.OLLAMA_MODEL}...`);
@@ -35,7 +35,7 @@ export const callOllamaChat = async (messages) => {
     return reply;
   } catch (error) {
     if (error.name === 'AbortError') {
-      logger.error('[OllamaChat] Request timed out (60-second limit reached).');
+      logger.error('[OllamaChat] Request timed out (180-second limit reached).');
       throw new Error('Timeout error connecting to AI service.');
     }
     logger.error(`[OllamaChat] API connection error: ${error.message}`);

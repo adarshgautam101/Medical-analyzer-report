@@ -318,41 +318,9 @@ export default function ReportViewer() {
             )}
           </div>
 
-          <p className="text-gray-800 leading-relaxed font-medium text-base mb-4 bg-white/80 backdrop-blur-xs p-4 rounded-lg border border-blue-100 shadow-2xs">
+          <p className="text-gray-800 leading-relaxed font-medium text-base bg-white/80 backdrop-blur-xs p-4 rounded-lg border border-blue-100 shadow-2xs">
             {aiData.summary}
           </p>
-
-          {aiData.observations && aiData.observations.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-blue-200/60">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-blue-900 mb-3">
-                Key Clinical Observations ({aiData.observations.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {aiData.observations.map((obs, idx) => (
-                  <div key={idx} className="bg-white p-4 rounded-lg border border-blue-100 shadow-2xs hover:border-blue-300 transition-all">
-                    <div className="text-gray-900 text-sm font-semibold leading-snug">{obs.text}</div>
-                    {obs.parameterName && (
-                      <div className="mt-2.5 flex flex-wrap gap-2 text-xs">
-                        <span className="bg-blue-50 text-blue-700 font-medium px-2 py-0.5 rounded border border-blue-100">
-                          {obs.parameterName}
-                        </span>
-                        {obs.value && (
-                          <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                            Val: {obs.value} {obs.unit || ''}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {obs.sourceText && (
-                      <div className="text-xs text-gray-500 mt-2.5 pt-2 border-t border-gray-100 italic truncate">
-                        Source OCR: &quot;{obs.sourceText}&quot;
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 

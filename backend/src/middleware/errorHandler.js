@@ -27,9 +27,12 @@ export const errorHandler = (err, req, res, next) => {
 
   return res.status(statusCode).json({
     success: false,
+    code: err.code || undefined,
+    message,
     error: {
       message,
       statusCode,
+      code: err.code || undefined,
       requestId: req.id,
     },
     requestId: req.id,

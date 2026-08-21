@@ -668,7 +668,7 @@ export function sanitizeAndValidateAiSummary(validatedObj, labValues = [], docum
     return status === 'outside';
   });
 
-  const sanitizedObs = [];
+  let sanitizedObs = [];
 
   for (const obs of observations) {
     let obsText = typeof obs === 'string' ? obs : (obs.text || '');
@@ -724,8 +724,10 @@ export function sanitizeAndValidateAiSummary(validatedObj, labValues = [], docum
   if (documentType === 'Laboratory') {
     if (allWithin) {
       overallStatus = 'Normal';
-      const countStr = labValues.length > 0 ? `${labValues.length} ` : '';
-      cleanSummary = `The ${countStr}extracted laboratory measurements are within the reference ranges provided in the report. No extracted laboratory value is outside its supplied reference range.`;
+      if (!cleanSummary || cleanSummary.trim() === '') {
+        const countStr = labValues.length > 0 ? `${labValues.length} ` : '';
+        cleanSummary = `The ${countStr}extracted laboratory measurements are within the reference ranges provided in the report. No extracted laboratory value is outside its supplied reference range.`;
+      }
 
       if (sanitizedObs.length === 0) {
         for (const lv of labValues) {
@@ -763,16 +765,123 @@ export function sanitizeAndValidateAiSummary(validatedObj, labValues = [], docum
 
   for (const lv of labValues) {
     const refStatus = lv.referenceStatus || evaluateReferenceRange(lv.value, lv.referenceRange).status;
-    if (refStatus === 'within') {
-      const paramPattern = new RegExp(`(${escapeRegExp(lv.parameterName)}[^.]*?)(below|outside|elevated|abnormal|low|high)([^.]*?\\.)`, 'gi');
-      cleanSummary = cleanSummary.replace(paramPattern, `$1is within the reference threshold (${lv.referenceRange}).`);
+    if (refStatus === 'within' && lv.referenceRange) {
+      const paramPattern = new RegExp(`(${escapeRegExp(lv.parameterName)}[^.,;]{0,40}?)\\b(below|outside|elevated|abnormal|low|high)\\b([^.]*?\\.)`, 'gi');
+      cleanSummary = cleanSummary.replace(paramPattern, `$1is within the reference range provided in the report (${lv.referenceRange}).`);
     }
+  }
+
+  // Strip unsupported range/clinical classifications for parameters with status "Unknown Range"
+  for (const lv of labValues) {
+    const refStatus = lv.referenceStatus || evaluateReferenceRange(lv.value, lv.referenceRange).status;
+    if (refStatus === 'unknown' || !lv.referenceRange) {
+      const pName = lv.parameterName;
+      let aliasPatternStr = escapeRegExp(pName);
+      const pUpper = pName.toUpperCase();
+      if (pUpper === 'PLT') {
+        aliasPatternStr = '(?:PLT|platelets?|platelet)';
+      } else if (pUpper === 'HCT') {
+        aliasPatternStr = '(?:HCT|hematocrit)';
+      } else if (pUpper === 'NEUT%') {
+        aliasPatternStr = '(?:NEUT%?|percentage\\s+count\\s+neut%?|neutrophils?)';
+      } else if (pUpper === 'LYMPH%') {
+        aliasPatternStr = '(?:LYMPH%?|lymphocytes?)';
+      } else if (pUpper === 'MONO%') {
+        aliasPatternStr = '(?:MONO%?|monocytes?)';
+      } else if (pUpper === 'BASO%') {
+        aliasPatternStr = '(?:BASO%?|basophils?)';
+      } else if (pUpper === 'RDWCV') {
+        aliasPatternStr = '(?:RDWCV|rdw)';
+      }
+
+      // 1. Remove clause: ", while/and/but (the) [Param] (count/level/value) is/are (slightly) elevated/high/low/abnormal/normal/within range/outside range"
+      const clausePattern1 = new RegExp(`(?:,\\s*(?:while|and|but)\\s+)?(?:the\\s+)?(?:patient\'s\\s+)?${aliasPatternStr}\\s*(?:value|level|count)?\\s*(?:is|are|was|were)?\\s*(?:slightly\\s+)?(?:elevated|high|low|abnormal|normal|within|outside|increased|decreased|below|above)[^.,;]*`, 'gi');
+      cleanSummary = cleanSummary.replace(clausePattern1, '');
+
+      // 2. Remove sentence: "(The) [Param] (count/level/value) is/are (slightly) elevated/high/low/abnormal/normal/within range/outside range."
+      const sentencePattern = new RegExp(`(?:The\\s+)?(?:Patient\'s\\s+)?${aliasPatternStr}\\s*(?:count|level|value)?\\s*(?:is|are|was|were)\\s*(?:slightly\\s+)?(?:elevated|high|low|abnormal|normal|within|outside|increased|decreased|below|above)[^.]*\\.?`, 'gi');
+      cleanSummary = cleanSummary.replace(sentencePattern, '');
+
+      const escapedName = escapeRegExp(lv.parameterName);
+      const errRangePattern = new RegExp(`(${escapedName}[^.,;]{0,60}?)\\s*(?:is\\s+within|within\\s+the\\s+reference\\s+(?:threshold|range))?\\s*\\([0-9.]+\\s*-\\s*[0-9.]+\\)`, 'gi');
+      cleanSummary = cleanSummary.replace(errRangePattern, `$1 (no reference range was provided in the report, so this result cannot be classified by range)`);
+    }
+  }
+
+  // Context-aware & Case-preserving reference range phrasing sanitization:
+  // 1. Convert negative range mentions cleanly (preserving capitalization of "No" / "no")
+  cleanSummary = cleanSummary.replace(/\b(no)\s+(?:normal|standard|universal)\s+range\b/gi, (match, prefix) => {
+    const isCap = prefix[0] === prefix[0].toUpperCase();
+    return isCap ? 'No reference range' : 'no reference range';
+  });
+
+  // 2. Convert affirmative range mentions (preserving capitalization of "Within" / "within" / "In" / "in")
+  cleanSummary = cleanSummary.replace(/\b(within|in)\s+(?:the\s+)?(?:normal|standard|universal)\s+range\b/gi, (match, prefix) => {
+    const isCap = prefix[0] === prefix[0].toUpperCase();
+    return (isCap ? 'Within' : 'within') + ' the reference range provided in the report';
+  });
+
+  // 3. Fallback for standalone "normal range" / "standard range" / "universal range"
+  cleanSummary = cleanSummary.replace(/\b(?:normal|standard|universal)\s+reference\s+range\b/gi, 'reference range provided in the report');
+  cleanSummary = cleanSummary.replace(/\b(?:normal|standard|universal)\s+range\b/gi, 'reference range provided in the report');
+
+  // Guard: Strip any sentences or observations that attempt to make range or clinical classifications for laboratory parameters absent from AUTHORITATIVE STRUCTURED LAB DATA or with Unknown Range status
+  if (documentType === 'Laboratory' && Array.isArray(labValues) && labValues.length > 0) {
+    const knownParams = labValues.map(lv => lv.parameterName.toLowerCase());
+    const sentences = cleanSummary.split(/(?<=\.)\s+/);
+    const validSentences = sentences.filter(sentence => {
+      const isRangeClassification = /\b(?:within|outside|elevated|abnormal|normal|high|low|increased|decreased|below|above|biological\s+reference\s+range|reference\s+range|standard\s+range|universal\s+range)\b/i.test(sentence);
+      if (!isRangeClassification) {
+        const trimmed = sentence.trim().replace(/[.]/g, '');
+        if (trimmed.length < 10 && !knownParams.some(p => sentence.toLowerCase().includes(p))) {
+          return false;
+        }
+        return true;
+      }
+      const sentenceLower = sentence.toLowerCase();
+      return knownParams.some(param => {
+        const escaped = escapeRegExp(param);
+        return new RegExp(`\\b${escaped}\\b`, 'i').test(sentenceLower);
+      });
+    });
+
+    if (validSentences.length > 0) {
+      cleanSummary = validSentences.join(' ');
+    }
+
+    sanitizedObs = sanitizedObs.filter(obs => {
+      const obsText = (obs.text || '').toLowerCase();
+      const isRangeClassification = /\b(?:within|outside|elevated|abnormal|normal|high|low|increased|decreased|below|above|biological\s+reference\s+range|reference\s+range|standard\s+range|universal\s+range)\b/i.test(obsText);
+      if (!isRangeClassification) return true;
+
+      const paramLower = (obs.parameterName || '').toLowerCase();
+      const matchingLv = labValues.find(lv => {
+        const pKey = lv.parameterName.toLowerCase();
+        return (paramLower && paramLower.includes(pKey)) || (obsText && obsText.includes(pKey)) ||
+               (pKey === 'plt' && /\b(plt|platelet)\b/i.test(obsText));
+      });
+
+      if (!matchingLv) {
+        return false; // Ungrounded parameter absent from structured labValues (e.g. ESR) -> BLOCK
+      }
+
+      const refStatus = matchingLv.referenceStatus || evaluateReferenceRange(matchingLv.value, matchingLv.referenceRange).status;
+      if (refStatus === 'unknown' || !matchingLv.referenceRange) {
+        return false; // Parameter has Unknown Range status -> BLOCK classification observation!
+      }
+
+      return true;
+    });
   }
 
   // Strip ungrounded general medical health claims
   cleanSummary = cleanSummary
     .replace(/(the patient is|patient is|everything is)\s+(medically\s+)?normal[^\.]*\./gi, 'Extracted values remain within supplied reference ranges.')
     .replace(/(the patient has no disease|no abnormality exists|everything is medically normal)[^\.]*\./gi, '')
+    .replace(/\s*,\s*,+/g, ',')
+    .replace(/^\s*[,;.]+\s*/, '')
+    .replace(/\s*[,;]\s*\./g, '.')
+    .replace(/\s+/g, ' ')
     .trim();
 
   if (/(consistent with|indicates|diagnostic of)\s+(multiple sclerosis|ms\b)/i.test(cleanSummary)) {
@@ -801,45 +910,57 @@ export const fetchOllamaSummary = async (extractedText, labValues = [], document
     return null;
   }
 
+  const statusMap = {
+    'within': 'Within Range',
+    'outside': 'Outside Range',
+    'unknown': 'Unknown Range'
+  };
+
   const formattedLabValues = Array.isArray(labValues)
     ? labValues.map(lv => {
       const refEval = evaluateReferenceRange(lv.value, lv.referenceRange);
+      const rawStatus = lv.referenceStatus || refEval.status;
       return {
-        parameterName: lv.parameterName,
-        value: lv.value,
+        parameter: lv.parameterName,
+        value: String(lv.value),
         unit: lv.unit || '',
-        referenceRange: lv.referenceRange || '',
-        referenceStatus: lv.referenceStatus || refEval.status,
-        confidence: lv.confidence || 1.0,
-        sourceText: lv.sourceText || ''
+        referenceRange: lv.referenceRange || null,
+        status: statusMap[rawStatus] || 'Unknown Range'
       };
     })
     : [];
 
-  const promptContent = `REPORT TEXT:
-${extractedText.substring(0, 3500)}
-
-STRUCTURED LAB VALUES:
+  const promptContent = `=== AUTHORITATIVE STRUCTURED LAB DATA ===
 ${JSON.stringify(formattedLabValues, null, 2)}
 
-DOCUMENT TYPE:
-${documentType}`;
+=== RAW REPORT CONTEXT (For Metadata Only: Patient Name, Report Date, Facility) ===
+${extractedText.substring(0, 3500)}
+
+DOCUMENT TYPE: ${documentType}`;
 
   const prompt = `You are an expert clinical medical report analyst.
-Analyze the provided medical document text and supporting structured data.
+Analyze the provided medical document text and supporting structured laboratory data.
 
-Primary Objective:
-Read the complete REPORT TEXT as a comprehensive clinical report. Generate an accurate summary and structured observations based directly on the actual report contents.
+AUTHORITATIVE DATA & GROUNDING RULES:
+1. AUTHORITATIVE STRUCTURED LAB DATA is the sole single source of truth for all laboratory parameter measurements, values, units, reference ranges, and range statuses.
+2. RAW REPORT CONTEXT is provided ONLY for non-laboratory metadata (such as patient name, report date, facility). RAW REPORT CONTEXT must NEVER override, alter, or contradict AUTHORITATIVE STRUCTURED LAB DATA.
+3. You may discuss laboratory parameters ONLY when they exist in AUTHORITATIVE STRUCTURED LAB DATA. Do NOT extract, classify, or assign ranges to additional laboratory parameters found only in RAW REPORT CONTEXT.
+4. Deterministic Status: The 'status' field in AUTHORITATIVE STRUCTURED LAB DATA is pre-calculated deterministically by the application parser. NEVER recalculate, infer, or contradict 'status'.
 
-STRICT REFERENCE STATUS & GROUNDING RULES:
-1. Deterministic Status: referenceStatus in STRUCTURED LAB VALUES is calculated deterministically by the application. NEVER reinterpret or contradict referenceStatus.
-2. If referenceStatus = 'within': Describe the value as within the supplied reference range or normal. DO NOT claim it is below or outside the threshold.
-3. If referenceStatus = 'outside': Describe it as outside the supplied reference range.
-4. If referenceStatus = 'unknown': Do not classify it as normal or abnormal based on missing/unparseable range.
-5. NO INDEPENDENT DIAGNOSIS: Do NOT infer a disease diagnosis (such as Multiple Sclerosis, Cancer, Diabetes) from laboratory values or report text.
-6. Report Statement vs Diagnosis: Do NOT claim that laboratory findings are consistent with, diagnostic of, or confirm a disease unless the supplied report explicitly states that diagnosis as a direct report statement. Even then, describe it strictly as a statement contained in the report rather than independently diagnosing the patient.
-7. Primary Source: Use REPORT TEXT for overall findings and impressions, but NEVER contradict STRUCTURED LAB VALUES measurements or referenceStatus.
-8. Administrative Exclusion: Ignore hospital addresses, registration numbers, phone numbers, patient IDs, and billing metadata.
+STRICT REFERENCE RANGE & PARAMETER CONSTRAINTS:
+- When describing a parameter with status "Within Range", describe its range strictly as "reference range provided in the report" (e.g. "within the reference range provided in the report (80-140 mg/dL)").
+- Do NOT use terms such as "normal range", "standard range", or "universal range".
+- NEVER assign a reference range to a parameter when referenceRange is null or empty in AUTHORITATIVE STRUCTURED LAB DATA.
+- NEVER copy a reference range from one parameter to another parameter.
+- NEVER infer a reference range from numerical values.
+- NEVER describe a parameter with status "Unknown Range" as normal, abnormal, within range, or outside range.
+- If status is "Unknown Range", explicitly state: "No reference range was provided in the report, so this result cannot be classified by range."
+- NEVER introduce, classify, or evaluate laboratory measurements or reference ranges for parameters absent from AUTHORITATIVE STRUCTURED LAB DATA (e.g. parameters found only in RAW REPORT CONTEXT).
+- ONLY describe a parameter as "within range" when status is "Within Range".
+- ONLY describe a parameter as "outside range" when status is "Outside Range".
+- Do NOT invent laboratory reference ranges.
+- Do NOT make disease diagnoses or clinical claims from isolated lab values.
+- Do NOT contradict structured backend data.
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -861,7 +982,7 @@ Return ONLY a valid JSON object matching this schema:
   const timeoutId = setTimeout(() => controller.abort(), 180000);
 
   try {
-    logger.info(`Requesting local Ollama summary using model: ${env.OLLAMA_MODEL} for docType: ${documentType}...`);
+    logger.info(`[OllamaAI] Request started. Model: ${env.OLLAMA_MODEL}, Endpoint: ${env.OLLAMA_BASE_URL}/api/chat, DocType: ${documentType}`);
     const response = await fetch(`${env.OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: {
@@ -898,8 +1019,11 @@ Return ONLY a valid JSON object matching this schema:
 
     const validated = validateOllamaResponse(rawContent);
     if (!validated) {
+      logger.warn('[OllamaAI] Validation failed: Response content was empty or unparseable JSON.');
       throw new Error('Ollama response content validation failed or JSON is malformed.');
     }
+
+    logger.info(`[OllamaAI] Validation succeeded. Received ${validated.observations?.length || 0} observations.`);
 
     const sanitized = sanitizeAndValidateAiSummary(validated, labValues, documentType, extractedText);
 
@@ -910,7 +1034,11 @@ Return ONLY a valid JSON object matching this schema:
     console.log('========================================\n');
     return sanitized;
   } catch (error) {
-    logger.error(`Ollama API failed: ${error.message}`);
+    if (error.name === 'AbortError') {
+      logger.error(`[OllamaAI] Request timed out (180-second limit reached for model ${env.OLLAMA_MODEL}).`);
+    } else {
+      logger.error(`[OllamaAI] Request failed: ${error.message}`);
+    }
     return null;
   } finally {
     clearTimeout(timeoutId);
@@ -958,6 +1086,57 @@ export function validateExtractedText(text) {
   return { valid: true, cleanedText: cleaned };
 }
 
+export class OcrQueue {
+  constructor(concurrency = 1) {
+    this.concurrency = concurrency;
+    this.running = 0;
+    this.queue = [];
+  }
+
+  enqueue(taskFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ taskFn, resolve, reject });
+      this.processNext();
+    });
+  }
+
+  async processNext() {
+    if (this.running >= this.concurrency || this.queue.length === 0) {
+      return;
+    }
+
+    this.running++;
+    const { taskFn, resolve, reject } = this.queue.shift();
+
+    try {
+      const result = await taskFn();
+      resolve(result);
+    } catch (err) {
+      reject(err);
+    } finally {
+      this.running--;
+      if (this.running === 0 && this.queue.length === 0) {
+        try {
+          await scribe.terminate();
+        } catch (termErr) {
+          // Ignore warning on idle cleanup
+        }
+      }
+      this.processNext();
+    }
+  }
+
+  get pendingCount() {
+    return this.queue.length;
+  }
+
+  get activeCount() {
+    return this.running;
+  }
+}
+
+export const ocrQueue = new OcrQueue(1);
+
 export async function extractDocumentText(filePath, mimeType = '') {
   logger.info(`[OCR] Processing started`);
   logger.info(`[OCR] File: ${filePath}`);
@@ -999,11 +1178,6 @@ export async function extractDocumentText(filePath, mimeType = '') {
         logger.warn(`[OCR] Warning closing ScribeDoc: ${closeErr.message}`);
       }
     }
-    try {
-      await scribe.terminate();
-    } catch (termErr) {
-      logger.warn(`[OCR] Warning terminating Scribe worker pool: ${termErr.message}`);
-    }
   }
 }
 
@@ -1024,27 +1198,26 @@ export const processReportInBackground = async (reportId, filePath, mimeType = '
     await Report.findByIdAndUpdate(reportId, { ocrStatus: 'processing' });
     logger.info(`[Parser] Started processing for report ${reportId}`);
 
-    if (filePath) {
-      const headerCheck = await verifyFileHeader(filePath);
-      if (!headerCheck.valid) {
-        logger.error(`[OCR] File header validation failed for report ${reportId}: ${headerCheck.reason}`);
-        await Report.findByIdAndUpdate(reportId, {
-          ocrStatus: 'invalid',
-          rejectionReason: headerCheck.reason,
-          filePath: null
-        });
-        await removeTemporaryFile(filePath);
-        return;
-      }
-    }
-
     let rawText = '';
     const reportDoc = await Report.findById(reportId);
     if (reportDoc && reportDoc.extractedText && reportDoc.extractedText.length > 20) {
       rawText = reportDoc.extractedText;
     } else {
+      if (filePath) {
+        const headerCheck = await verifyFileHeader(filePath);
+        if (!headerCheck.valid) {
+          logger.error(`[OCR] File header validation failed for report ${reportId}: ${headerCheck.reason}`);
+          await Report.findByIdAndUpdate(reportId, {
+            ocrStatus: 'failed',
+            rejectionReason: headerCheck.reason,
+            filePath: null
+          });
+          await removeTemporaryFile(filePath);
+          return;
+        }
+      }
       try {
-        const res = await extractDocumentText(filePath, mimeType);
+        const res = await ocrQueue.enqueue(() => extractDocumentText(filePath, mimeType));
         rawText = res.rawText;
       } catch (err) {
         logger.error(`[OCR] Processing failed`);
@@ -1069,14 +1242,25 @@ export const processReportInBackground = async (reportId, filePath, mimeType = '
 
     const medicalCheck = isMedicalDocument(extractedText);
     if (!medicalCheck.isMedical) {
-      logger.warn(`[MedicalClassification] Document ${reportId} rejected: ${medicalCheck.reason}`);
-      await Report.findByIdAndUpdate(reportId, {
-        ocrStatus: 'invalid',
-        rejectionReason: medicalCheck.reason,
-        extractedText,
-        filePath: null
-      });
-      await removeTemporaryFile(filePath);
+      const reportDocForUser = await Report.findById(reportId);
+      const userId = reportDocForUser ? reportDocForUser.user : 'unknown';
+      logger.warn(`NON_MEDICAL_REPORT_REJECTED reportId: ${reportId} userId: ${userId} reason: ${medicalCheck.reason}`);
+
+      // 1. Clean up associated LabValues if any exist (idempotent cleanup)
+      await LabValue.deleteMany({ report: reportId });
+
+      // 2. Remove physical temporary upload files from disk
+      if (filePath) {
+        await removeTemporaryFile(filePath);
+      }
+      if (reportDocForUser && reportDocForUser.filePath && reportDocForUser.filePath !== filePath) {
+        await removeTemporaryFile(reportDocForUser.filePath);
+      }
+
+      // 3. Completely delete the Report document from MongoDB
+      await Report.findByIdAndDelete(reportId);
+
+      logger.info(`NON_MEDICAL_REPORT_CLEANUP_COMPLETED reportId: ${reportId}`);
       return;
     }
 

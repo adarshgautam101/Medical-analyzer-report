@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { Report, LabValue, PatientDoctorAccess } from '../models/index.js';
-import { processReportInBackground } from '../utils/parser.js';
+import { processReportInBackground, extractDocumentText, validateExtractedText, isMedicalDocument } from '../utils/parser.js';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors/AppError.js';
 import { logger } from '../utils/logger.js';
 
@@ -26,16 +26,51 @@ export const uploadReport = async (user, file) => {
     throw new BadRequestError('No file uploaded');
   }
 
+  let extractedText = '';
+  let ocrError = null;
+  try {
+    const ocrRes = await extractDocumentText(file.path, file.mimetype);
+    const rawText = ocrRes?.rawText || '';
+    const validation = validateExtractedText(rawText);
+    if (validation.valid) {
+      extractedText = validation.cleanedText;
+    } else {
+      ocrError = validation.reason || 'Invalid file format or corrupted text';
+    }
+  } catch (err) {
+    ocrError = err.message;
+    logger.warn(`Pre-upload OCR extraction warning: ${err.message}`);
+  }
+
+  const medicalCheck = extractedText
+    ? isMedicalDocument(extractedText)
+    : { isMedical: false, reason: ocrError || 'Could not extract medical content from document' };
+
+  if (!medicalCheck.isMedical) {
+    logger.warn(`Upload rejected for non-medical document: ${file.filename}, reason: ${medicalCheck.reason}`);
+    try {
+      if (fs.existsSync(file.path)) {
+        await fs.promises.unlink(file.path);
+      }
+    } catch (e) {
+      logger.warn(`Failed to remove rejected upload file: ${e.message}`);
+    }
+    throw new BadRequestError(
+      'This file is not a valid medical report and cannot be uploaded. Please upload a valid medical report.',
+      'INVALID_MEDICAL_REPORT'
+    );
+  }
+
   const report = new Report({
     user: user.id,
     fileName: file.filename,
     filePath: file.path,
     fileType: file.mimetype,
     ocrStatus: 'pending',
+    extractedText: extractedText || '',
   });
 
   await report.save();
-
 
   processReportInBackground(report._id, report.filePath, file.mimetype);
 

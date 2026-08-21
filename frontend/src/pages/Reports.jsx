@@ -3,11 +3,9 @@ import { useDropzone } from 'react-dropzone'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useAuth } from '../contexts/AuthContext'
-import { Upload, FileText, Trash2, Loader, AlertCircle, BarChart2, TrendingUp, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Upload, FileText, Trash2, Loader, AlertCircle, BarChart2, TrendingUp, Activity, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 const PAGE_SIZE = 10
-
-
 
 export default function Reports() {
   const { user } = useAuth()
@@ -21,14 +19,39 @@ export default function Reports() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [page, setPage] = useState(1)
+  const [invalidReportModal, setInvalidReportModal] = useState({
+    isOpen: false,
+    title: 'Invalid Report',
+    message: '',
+  })
   const pollingRef = useRef(null)
-
-
+  const alertedReportIdsRef = useRef(new Set())
 
   const fetchReports = useCallback(async () => {
     try {
       const response = await api.get('/api/reports')
-      setReports(response.data || [])
+      const rawReports = response.data || []
+
+      const invalidReports = rawReports.filter(
+        (r) => r.ocr_status === 'invalid' || r.code === 'INVALID_MEDICAL_REPORT'
+      )
+
+      invalidReports.forEach((invReport) => {
+        if (!alertedReportIdsRef.current.has(invReport.id)) {
+          alertedReportIdsRef.current.add(invReport.id)
+          setInvalidReportModal({
+            isOpen: true,
+            title: 'Invalid Report',
+            message:
+              invReport.rejection_reason ||
+              'This file is not a valid medical report and cannot be uploaded. Please upload a valid medical report.',
+          })
+          api.delete(`/api/reports/${invReport.id}`).catch(() => {})
+        }
+      })
+
+      const validReports = rawReports.filter((r) => r.ocr_status !== 'invalid')
+      setReports(validReports)
       setListError('')
     } catch (error) {
       console.error('Error fetching reports:', error)
@@ -93,7 +116,6 @@ export default function Reports() {
 
     const file = acceptedFiles[0]
 
-
     const existingNames = reports.map((r) => r.file_name.toLowerCase())
     if (existingNames.includes(file.name.toLowerCase())) {
       alert('This file has already been uploaded. Please choose a different file.')
@@ -107,7 +129,7 @@ export default function Reports() {
       const formData = new FormData()
       formData.append('file', file)
 
-      await api.post('/api/reports/upload', formData, {
+      const response = await api.post('/api/reports/upload', formData, {
         onUploadProgress: (progressEvent) => {
           const total = progressEvent.total || 1
           const percentCompleted = Math.round((progressEvent.loaded * 100) / total)
@@ -115,12 +137,41 @@ export default function Reports() {
         },
       })
 
+      if (response.data && (response.data.ocr_status === 'invalid' || response.data.code === 'INVALID_MEDICAL_REPORT')) {
+        setInvalidReportModal({
+          isOpen: true,
+          title: 'Invalid Report',
+          message:
+            response.data.rejection_reason ||
+            'This file is not a valid medical report and cannot be uploaded. Please upload a valid medical report.',
+        })
+      }
+
       await fetchReports()
     } catch (error) {
       console.error('Error uploading file:', error)
-      alert(
-        error.response?.data?.detail || 'Error uploading file. Please try again.'
-      )
+      const errData = error.response?.data
+      const isInvalidMedical =
+        errData?.code === 'INVALID_MEDICAL_REPORT' ||
+        errData?.error?.code === 'INVALID_MEDICAL_REPORT' ||
+        (error.response?.status === 400 &&
+          (errData?.detail?.toLowerCase().includes('medical report') ||
+           errData?.message?.toLowerCase().includes('medical report')))
+
+      if (isInvalidMedical) {
+        setInvalidReportModal({
+          isOpen: true,
+          title: 'Invalid Report',
+          message:
+            errData?.message ||
+            errData?.detail ||
+            'This file is not a valid medical report and cannot be uploaded. Please upload a valid medical report.',
+        })
+      } else {
+        alert(
+          errData?.detail || errData?.message || 'Error uploading file. Please try again.'
+        )
+      }
     } finally {
       setUploading(false)
       setUploadProgress(0)
@@ -348,6 +399,39 @@ export default function Reports() {
           </div>
         )}
       </div>
+
+      {invalidReportModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 max-w-md w-full relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setInvalidReportModal({ isOpen: false, title: 'Invalid Report', message: '' })}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center text-red-600 flex-shrink-0 border border-red-100">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900 text-lg">{invalidReportModal.title}</h3>
+                <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                  {invalidReportModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setInvalidReportModal({ isOpen: false, title: 'Invalid Report', message: '' })}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

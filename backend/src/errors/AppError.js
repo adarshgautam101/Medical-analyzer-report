@@ -1,7 +1,8 @@
 export class AppError extends Error {
-  constructor(message, statusCode = 500) {
+  constructor(message, statusCode = 500, code = undefined) {
     super(message);
     this.statusCode = statusCode;
+    this.code = code;
     this.isOperational = true;
 
     Error.captureStackTrace(this, this.constructor);
@@ -9,8 +10,8 @@ export class AppError extends Error {
 }
 
 export class BadRequestError extends AppError {
-  constructor(message = 'Bad Request') {
-    super(message, 400);
+  constructor(message = 'Bad Request', code = undefined) {
+    super(message, 400, code);
   }
 }
 
