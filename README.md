@@ -1,4 +1,4 @@
-# Medical Report Analyzer (Express & MongoDB Implementation)
+8# Medical Report Analyzer (Express & MongoDB Implementation)
 
 > A comprehensive full-stack web application for patients to upload medical reports, and doctors to analyze patient health data with AI-powered insights, real-time analytics, and centralized logging.
 
@@ -631,4 +631,4 @@ This layout prepares you to discuss architectural details suitable for senior de
 - **Future Enhancements**:
   - **Multi-Modal Imaging & Radiology Model**: Introduce a dedicated `structuredFindings` model for MRI/CT/X-Ray anatomical measurements (e.g., disc heights, organ dimensions) to display alongside blood lab values without schema pollution.
   - Offload CPU-intensive OCR processes to worker threads or external serverless endpoints.
-  - Add a refresh token rotation flow....
+  - Add a refresh token rotation flow
