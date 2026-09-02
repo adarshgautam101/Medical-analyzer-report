@@ -1,6 +1,8 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -32,11 +34,18 @@ import logsRouter from './routes/logs.js';
 
 const app = express();
 const httpServer = createServer(app);
+
+const allowedOrigins = env.CORS_ORIGIN
+  ? env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
+  : (env.NODE_ENV === 'production' ? false : true);
+
+const corsOptions = {
+  origin: allowedOrigins,
+  credentials: true,
+};
+
 const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
+  cors: corsOptions,
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,9 +56,23 @@ const uploadDir = path.join(__dirname, '../uploads');
 await fs.promises.mkdir(uploadDir, { recursive: true });
 
 
-app.use(cors());
+app.use(helmet());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(requestLogger);
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again after 15 minutes',
+  },
+});
+
+app.use('/api', limiter);
 
 
 app.use('/uploads', express.static(uploadDir));
@@ -84,9 +107,7 @@ app.get('/health', (req, res) => {
 app.use(errorHandler);
 
 
-logger.info(`OPENROUTER_API_KEY loaded: ${!!env.OPENROUTER_API_KEY}`);
-logger.info(`API key length: ${env.OPENROUTER_API_KEY?.length || 0}`);
-logger.info(`Ollama integration active. URL: ${env.OLLAMA_BASE_URL}, Model: ${env.OLLAMA_MODEL}`);
+logger.info(`Hugging Face AI integration active. Model: ${env.HF_MODEL} (Token configured: ${!!env.HF_TOKEN})`);
 
 logger.info('Connecting to MongoDB database...');
 
@@ -105,7 +126,9 @@ mongoose
   .connect(env.MONGODB_URI)
   .then(async () => {
     logger.info('MongoDB connected successfully!');
-    await seedDatabase();
+    if (env.NODE_ENV === 'development') {
+      await seedDatabase();
+    }
     initializeSocket(io);
     httpServer.listen(env.PORT, () => {
       logger.info(`Express server running on port ${env.PORT} [env: ${env.NODE_ENV}]`);

@@ -12,9 +12,17 @@ async function runUiDataContractRegressionTests() {
   await mongoose.connect(env.MONGODB_URI);
 
   try {
-    const user = await User.findOne({ email: 'adarsh123@gmail.com' });
+    let user = await User.findOne({ email: 'adarsh123@gmail.com' });
     if (!user) {
-      throw new Error('Test user adarsh123@gmail.com not found in MongoDB');
+      user = await User.findOne();
+    }
+    if (!user) {
+      user = await User.create({
+        name: 'Test User',
+        email: 'adarsh123@gmail.com',
+        password: 'password123',
+        role: 'patient'
+      });
     }
     const mockUser = { id: user._id.toString(), role: user.role, email: user.email };
 

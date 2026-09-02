@@ -6,6 +6,7 @@ import { Report, LabValue, ReportCategory, UniversalRange } from '../models/inde
 import { inferReportName } from './analytics.js';
 import { logger } from './logger.js';
 import { env } from '../config/env.js';
+import { HfInference } from '@huggingface/inference';
 
 const require = createRequire(import.meta.url);
 const { PDFParse } = require('pdf-parse');
@@ -365,6 +366,23 @@ export function preprocessOcrLine(line) {
   return clean.trim();
 }
 
+function isValidParameterName(paramName) {
+  if (!paramName || typeof paramName !== 'string') return false;
+  const trimmed = paramName.trim();
+  if (trimmed.length < 2 || trimmed.length > 45) return false;
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > 5) return false;
+
+  if (/[.;!?]/.test(trimmed)) return false;
+
+  if (/\b(antibody|antibodies|indicates|indicated|specimen|methodology|technique|interpreted|patient|sample|clinical correlation|note)\b/i.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function parseParameterLine(line, fullText = '', prevLine = '') {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -443,8 +461,14 @@ export function parseParameterLine(line, fullText = '', prevLine = '') {
     const qualVal = qualMatch[2].trim();
     const qualRest = qualMatch[3].trim();
 
-    if (paramName.length >= 2 && !/^(about|between|more|less|patient|doctor|method|report|subtotal|total|amount|invoice|tax|bill|page)/i.test(paramName)) {
+    if (isValidParameterName(paramName) && !/^(about|between|more|less|patient|doctor|method|report|subtotal|total|amount|invoice|tax|bill|page)/i.test(paramName)) {
       let refRange = qualRest;
+      if (refRange) {
+        const isAllowedQualRef = /^(negative|positive|non-reactive|reactive|detected|not detected)$/i.test(refRange.trim());
+        if (refRange.length > 35 || /[.;!?]/.test(refRange) || /\b(antibody|antibodies|indicates|indicated|specimen|methodology|technique|interpreted|patient|sample|clinical correlation|note)\b/i.test(refRange) || !isAllowedQualRef) {
+          refRange = null;
+        }
+      }
       if (!refRange && /negative|non-reactive|not detected/i.test(qualVal)) {
         refRange = 'Negative';
       }
@@ -456,7 +480,7 @@ export function parseParameterLine(line, fullText = '', prevLine = '') {
         qualitativeValue: qualVal,
         unit: '',
         referenceRange: refRange,
-        referenceStatus: refEval.status,
+        referenceStatus: refRange ? refEval.status : 'unknown',
         confidence: 0.95,
         sourceText: rawSourceText,
         evidenceSource
@@ -479,7 +503,7 @@ export function parseParameterLine(line, fullText = '', prevLine = '') {
 
   let rest = match[3].trim();
 
-  if (!paramName || paramName.length < 2 || /^\d+$/.test(paramName)) return null;
+  if (!paramName || !isValidParameterName(paramName) || /^\d+$/.test(paramName)) return null;
   if (/^(about|between|more|less|highly|this|that|patient|doctor|method|report|commercial|reg|vid|age|sex|pid)$/i.test(paramName.split(' ')[0])) {
     return null;
   }
@@ -598,7 +622,7 @@ export function calculateStatus(value, referenceRange, isAbnormal) {
   return isAbnormal ? 'abnormal' : 'normal';
 }
 
-function validateOllamaResponse(content) {
+export function validateAiResponse(content) {
   if (!content || typeof content !== 'string') return null;
   try {
     let cleanContent = content.trim();
@@ -651,6 +675,7 @@ function validateOllamaResponse(content) {
     return null;
   }
 }
+export const validateOllamaResponse = validateAiResponse;
 
 export function sanitizeAndValidateAiSummary(validatedObj, labValues = [], documentType = 'Laboratory', extractedText = '') {
   if (!validatedObj) return null;
@@ -899,14 +924,19 @@ export function sanitizeAndValidateAiSummary(validatedObj, labValues = [], docum
   };
 }
 
-export const fetchOllamaSummary = async (extractedText, labValues = [], documentType = 'Laboratory') => {
-  if (process.env.SKIP_OLLAMA === 'true') {
+export const fetchHfSummary = async (extractedText, labValues = [], documentType = 'Laboratory') => {
+  if (process.env.SKIP_HF === 'true' || process.env.SKIP_OLLAMA === 'true' || process.env.SKIP_AI === 'true') {
     return { summary: 'Summary skipped in test mode.', overallStatus: 'Normal', observations: [] };
   }
   const hasText = typeof extractedText === 'string' && extractedText.trim().length > 0;
 
-  if (!hasText) {
-    logger.info('No extractedText available for AI summary. Skipping Ollama call.');
+  if (!hasText && (!Array.isArray(labValues) || labValues.length === 0)) {
+    logger.info('No extractedText or labValues available for AI summary. Skipping Hugging Face call.');
+    return null;
+  }
+
+  if (!env.HF_TOKEN) {
+    logger.info('[HuggingFaceAI] HF_TOKEN is not configured. Falling back to rule-based summary.');
     return null;
   }
 
@@ -916,134 +946,106 @@ export const fetchOllamaSummary = async (extractedText, labValues = [], document
     'unknown': 'Unknown Range'
   };
 
-  const formattedLabValues = Array.isArray(labValues)
+  const compactLabValues = Array.isArray(labValues)
     ? labValues.map(lv => {
       const refEval = evaluateReferenceRange(lv.value, lv.referenceRange);
       const rawStatus = lv.referenceStatus || refEval.status;
       return {
-        parameter: lv.parameterName,
-        value: String(lv.value),
-        unit: lv.unit || '',
-        referenceRange: lv.referenceRange || null,
-        status: statusMap[rawStatus] || 'Unknown Range'
+        p: lv.parameterName,
+        v: String(lv.value !== null && lv.value !== undefined ? lv.value : (lv.qualitativeValue || '')),
+        u: lv.unit || '',
+        r: lv.referenceRange || '',
+        s: statusMap[rawStatus] || 'Unknown Range'
       };
     })
     : [];
 
-  const promptContent = `=== AUTHORITATIVE STRUCTURED LAB DATA ===
-${JSON.stringify(formattedLabValues, null, 2)}
+  const promptContent = JSON.stringify({
+    documentType,
+    labValues: compactLabValues
+  }, null, 2);
 
-=== RAW REPORT CONTEXT (For Metadata Only: Patient Name, Report Date, Facility) ===
-${extractedText.substring(0, 3500)}
+  const prompt = `You are an expert clinical medical report analyst. Analyze the provided structured laboratory data.
 
-DOCUMENT TYPE: ${documentType}`;
-
-  const prompt = `You are an expert clinical medical report analyst.
-Analyze the provided medical document text and supporting structured laboratory data.
-
-AUTHORITATIVE DATA & GROUNDING RULES:
-1. AUTHORITATIVE STRUCTURED LAB DATA is the sole single source of truth for all laboratory parameter measurements, values, units, reference ranges, and range statuses.
-2. RAW REPORT CONTEXT is provided ONLY for non-laboratory metadata (such as patient name, report date, facility). RAW REPORT CONTEXT must NEVER override, alter, or contradict AUTHORITATIVE STRUCTURED LAB DATA.
-3. You may discuss laboratory parameters ONLY when they exist in AUTHORITATIVE STRUCTURED LAB DATA. Do NOT extract, classify, or assign ranges to additional laboratory parameters found only in RAW REPORT CONTEXT.
-4. Deterministic Status: The 'status' field in AUTHORITATIVE STRUCTURED LAB DATA is pre-calculated deterministically by the application parser. NEVER recalculate, infer, or contradict 'status'.
-
-STRICT REFERENCE RANGE & PARAMETER CONSTRAINTS:
-- When describing a parameter with status "Within Range", describe its range strictly as "reference range provided in the report" (e.g. "within the reference range provided in the report (80-140 mg/dL)").
-- Do NOT use terms such as "normal range", "standard range", or "universal range".
-- NEVER assign a reference range to a parameter when referenceRange is null or empty in AUTHORITATIVE STRUCTURED LAB DATA.
-- NEVER copy a reference range from one parameter to another parameter.
-- NEVER infer a reference range from numerical values.
-- NEVER describe a parameter with status "Unknown Range" as normal, abnormal, within range, or outside range.
-- If status is "Unknown Range", explicitly state: "No reference range was provided in the report, so this result cannot be classified by range."
-- NEVER introduce, classify, or evaluate laboratory measurements or reference ranges for parameters absent from AUTHORITATIVE STRUCTURED LAB DATA (e.g. parameters found only in RAW REPORT CONTEXT).
-- ONLY describe a parameter as "within range" when status is "Within Range".
-- ONLY describe a parameter as "outside range" when status is "Outside Range".
-- Do NOT invent laboratory reference ranges.
-- Do NOT make disease diagnoses or clinical claims from isolated lab values.
-- Do NOT contradict structured backend data.
+CRITICAL GROUNDING RULES:
+1. STRUCTURED LAB DATA is authoritative. Never invent, alter, or introduce parameters, values, units, or reference ranges.
+2. "Within Range" status must be described strictly as "within the reference range provided in the report". Do not use terms like "normal range" or "standard range".
+3. "Unknown Range" status means no reference range was provided in the report and it CANNOT be classified as normal or abnormal. Explicitly state: "No reference range was provided in the report, so this result cannot be classified by range."
+4. Do NOT make disease diagnoses or clinical claims.
+5. Provide a maximum of 3 observations in the output array.
+6. Provide a concise 2-sentence summary.
 
 Return ONLY a valid JSON object matching this schema:
 {
-  "summary": "2-3 concise sentences summarizing the actual report findings and overall clinical state.",
+  "summary": "2-sentence concise summary of lab findings.",
   "overallStatus": "Normal" | "Needs Review" | "Insufficient Information",
   "observations": [
     {
-      "text": "Clear observation statement based on report content",
-      "parameterName": "Parameter name if applicable, or empty string",
-      "value": "Value if applicable, or empty string",
-      "unit": "Unit if applicable, or empty string",
-      "referenceRange": "Reference range if explicitly provided in report, or empty string",
-      "sourceText": "Exact supporting line snippet from REPORT TEXT"
+      "text": "Observation statement based on provided lab data",
+      "parameterName": "Parameter name",
+      "value": "Value",
+      "unit": "Unit",
+      "referenceRange": "Reference range or empty string",
+      "sourceText": ""
     }
   ]
 }`;
 
+  const timeoutMs = env.HF_TIMEOUT_MS || 45000;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 180000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    logger.info(`[OllamaAI] Request started. Model: ${env.OLLAMA_MODEL}, Endpoint: ${env.OLLAMA_BASE_URL}/api/chat, DocType: ${documentType}`);
-    const response = await fetch(`${env.OLLAMA_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: env.OLLAMA_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: prompt,
-          },
-          {
-            role: 'user',
-            content: promptContent,
-          },
-        ],
-        format: 'json',
-        stream: false,
-        options: {
-          num_predict: 250,
-          temperature: 0.1,
+    logger.info(`[HuggingFaceAI] Request started. Model: ${env.HF_MODEL}, DocType: ${documentType}`);
+    const hf = new HfInference(env.HF_TOKEN);
+    const response = await hf.chatCompletion({
+      model: env.HF_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: prompt,
         },
-      }),
-      signal: controller.signal,
+        {
+          role: 'user',
+          content: promptContent,
+        },
+      ],
+      max_tokens: 220,
+      temperature: 0.1,
+      provider: 'featherless-ai',
     });
 
-    if (!response.ok) {
-      throw new Error(`Ollama HTTP Error: ${response.status} ${response.statusText}`);
+    const rawContent = response?.choices?.[0]?.message?.content;
+    if (!rawContent) {
+      logger.warn('[HuggingFaceAI] Validation failed: Response choices or message content was missing.');
+      throw new Error('Hugging Face response content missing.');
     }
 
-    const data = await response.json();
-    const rawContent = data.message?.content;
-
-    const validated = validateOllamaResponse(rawContent);
+    const validated = validateAiResponse(rawContent);
     if (!validated) {
-      logger.warn('[OllamaAI] Validation failed: Response content was empty or unparseable JSON.');
-      throw new Error('Ollama response content validation failed or JSON is malformed.');
+      logger.warn('[HuggingFaceAI] Validation failed: Response content was empty or unparseable JSON.');
+      throw new Error('Hugging Face response content validation failed or JSON is malformed.');
     }
 
-    logger.info(`[OllamaAI] Validation succeeded. Received ${validated.observations?.length || 0} observations.`);
+    logger.info(`[HuggingFaceAI] Validation succeeded. Received ${validated.observations?.length || 0} observations.`);
 
     const sanitized = sanitizeAndValidateAiSummary(validated, labValues, documentType, extractedText);
 
-    logger.info(`🤖 [AI SUMMARY RECEIVED FROM OLLAMA & SANITIZED]: ${JSON.stringify(sanitized)}`);
-    console.log('\n========================================');
-    console.log('🤖 [AI SUMMARY RECEIVED FROM OLLAMA & SANITIZED]:');
-    console.dir(sanitized, { depth: null });
-    console.log('========================================\n');
+    logger.info(`🤖 [AI SUMMARY RECEIVED FROM HUGGING FACE & SANITIZED] Status: ${sanitized?.overallStatus || 'unknown'}, Observations: ${sanitized?.observations?.length || 0}`);
     return sanitized;
   } catch (error) {
     if (error.name === 'AbortError') {
-      logger.error(`[OllamaAI] Request timed out (180-second limit reached for model ${env.OLLAMA_MODEL}).`);
+      logger.error(`[HuggingFaceAI] Request timed out (${timeoutMs}ms limit reached for model ${env.HF_MODEL}).`);
     } else {
-      logger.error(`[OllamaAI] Request failed: ${error.message}`);
+      logger.error(`[HuggingFaceAI] Request failed: ${error.message}`);
     }
     return null;
   } finally {
     clearTimeout(timeoutId);
   }
 };
+
+export const fetchOllamaSummary = fetchHfSummary;
 
 
 export function cleanExtractedText(rawText) {
@@ -1399,7 +1401,7 @@ export const processReportInBackground = async (reportId, filePath, mimeType = '
       };
     }
 
-    logger.info(`🤖 [FINAL REPORT AI SUMMARY SAVED TO DB]: ${aiSummaryText}`);
+    logger.info('🤖 AI summary generated and saved successfully');
 
     const updateData = {
       ocrStatus: 'completed',

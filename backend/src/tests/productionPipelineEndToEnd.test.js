@@ -18,11 +18,14 @@ async function runProductionPipelineEndToEndSuite() {
   try {
     let testUser = await User.findOne({ email: 'adarsh123@gmail.com' });
     if (!testUser) {
+      testUser = await User.findOne();
+    }
+    if (!testUser) {
       testUser = await User.create({
         email: 'adarsh123@gmail.com',
-        password: 'password123',
+        passwordHash: 'dummy_hash',
         role: 'patient',
-        name: 'Adarsh Gautam'
+        fullName: 'Adarsh Gautam'
       });
     }
     const mockUser = { id: testUser._id.toString(), role: testUser.role, email: testUser.email };

@@ -16,9 +16,13 @@ const envSchema = z.object({
     required_error: 'JWT_SECRET environment variable is required',
   }).min(1, 'JWT_SECRET cannot be empty'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  OPENROUTER_API_KEY: z.string().optional(),
-  OLLAMA_BASE_URL: z.string().default('http://127.0.0.1:11434'),
-  OLLAMA_MODEL: z.string().default('llama3.2:3b'),
+  HF_TOKEN: z.string().optional(),
+  HF_MODEL: z.string().default('Qwen/Qwen2.5-7B-Instruct'),
+  HF_TIMEOUT_MS: z
+    .string()
+    .default('45000')
+    .transform((val) => parseInt(val, 10)),
+  CORS_ORIGIN: z.string().optional(),
 });
 
 const _env = envSchema.safeParse(process.env);
