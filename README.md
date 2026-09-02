@@ -1,6 +1,6 @@
-8# Medical Report Analyzer (Express & MongoDB Implementation)
+# Medical Report Analyzer (Express & MongoDB Implementation)
 
-> A comprehensive full-stack web application for patients to upload medical reports, and doctors to analyze patient health data with AI-powered insights, real-time analytics, and centralized logging.
+> A production-hardened full-stack web application for patients to upload medical reports and doctors to analyze patient health data with AI-powered insights, real-time analytics, and role-based access control.
 
 ---
 
@@ -10,23 +10,20 @@
 2. [Features by Role](#2-features-by-role)
 3. [Tech Stack](#3-tech-stack)
 4. [System Architecture](#4-system-architecture)
-5. [Folder Structure](#5-folder-structure)
-6. [Database Design (MongoDB & Mongoose)](#6-database-design-mongodb--mongoose)
-7. [Authentication & Authorization](#7-authentication--authorization)
-8. [Backend API Documentation](#8-backend-api-documentation)
-9. [Report Upload & Processing Flow](#9-report-upload--processing-flow)
-10. [Medicine Management](#10-medicine-management)
-11. [Doctor-Patient Access System](#11-doctor-patient-access-system)
-12. [Analytics & SVG Generation Module](#12-analytics--svg-generation-module)
-13. [AI/ML Summary Module](#13-aiml-summary-module)
-14. [Frontend Architecture](#14-frontend-architecture)
-15. [Backend Architecture & Central Logging System](#15-backend-architecture--central-logging-system)
-16. [Setup Instructions](#16-setup-instructions)
-17. [Sample Credentials & Dummy Data](#17-sample-credentials--dummy-data)
-18. [Application Usage & User Flows](#18-application-usage--user-flows)
-19. [Interview Preparation Guide](#19-interview-preparation-guide)
-20. [Interview Questions & Answers (Node.js & MongoDB)](#20-interview-questions--answers-nodejs--mongodb)
-21. [Current Limitations & Future Enhancements](#21-current-limitations--future-enhancements)
+5. [PDF Upload & Storage Lifecycle](#5-pdf-upload--storage-lifecycle)
+6. [OCR & Clinical Parsing Pipeline](#6-ocr--clinical-parsing-pipeline)
+7. [Medical Document Validation](#7-medical-document-validation)
+8. [AI Summarization & Grounding Engine](#8-ai-summarization--grounding-engine)
+9. [Security & Production Hardening](#9-security--production-hardening)
+10. [Database Design (MongoDB & Mongoose)](#10-database-design-mongodb--mongoose)
+11. [Authentication & Access Control](#11-authentication--access-control)
+12. [Backend API Documentation](#12-backend-api-documentation)
+13. [Environment Variables](#13-environment-variables)
+14. [Local Development](#14-local-development)
+15. [Automated Testing & Regression Suites](#15-automated-testing--regression-suites)
+16. [Production Deployment (Netlify + Render)](#16-production-deployment-netlify--render)
+17. [Database Seeding](#17-database-seeding)
+18. [Production Notes & Limitations](#18-production-notes--limitations)
 
 ---
 
@@ -34,45 +31,39 @@
 
 ### Problem Statement
 Medical professionals and patients struggle to:
-- Organize and analyze fragmented medical reports from multiple providers.
-- Extract structured, actionable insights from unstructured medical documents.
-- Track health trends over time without manual data entry.
-- Enable secure doctor-patient collaboration with proper consent and access control.
-- Highlight abnormal values and potential health risks.
+- Organize and analyze fragmented medical reports from multiple healthcare providers.
+- Extract structured, actionable lab data from unstructured PDF reports and images.
+- Track longitudinal health trends over time without manual data entry.
+- Enable secure doctor-patient collaboration with explicit consent and access control.
+- Highlight abnormal diagnostic parameters and potential health risks accurately without hallucination.
 
 ### Solution Overview
-The **Medical Report Analyzer** automates the entire workflow:
-1. **Patients** upload medical reports (PDF/images) → Automated OCR and text parsing extract key parameters.
-2. **AI Processing** generates clinical summaries and structures lab data → Abnormalities detected and flagged.
-3. **Data Storage** organizes results in a secure MongoDB database.
-4. **Analytics** generates trends, Pearson correlations, and health insights.
-5. **Doctor Collaboration** allows doctors to view approved patient data with role-based access control.
+The **Medical Report Analyzer** automates the clinical workflow end-to-end:
+1. **Patients** upload medical reports (PDF/images) → Automated OCR and clinical parsing extract key lab indicators.
+2. **AI Processing** generates grounded clinical summaries using Hugging Face Inference (`Qwen/Qwen2.5-7B-Instruct` via Featherless AI provider).
+3. **Data Storage** persists extracted lab values, text, and summaries in MongoDB Atlas while deleting physical PDFs from disk immediately post-processing.
+4. **Analytics Engine** computes time-series trend lines, Pearson correlation matrices, and health summaries.
+5. **Doctor Collaboration** allows authorized doctors to review patient health metrics under a patient-first consent model.
 
 ---
 
 ## 2. Features by Role
 
 ### 2.1 Patient Features
-- **Registration & Login**: JWT-based authentication with secure password hashing.
-- **Dashboard**: Overview of uploaded reports and health metrics.
-- **Report Upload**: PDF/image upload with background text extraction.
-- **Report Viewer**: Detailed report metrics, abnormal badges, and AI-generated summaries.
-- **Profile Management**: Personal health metrics (age, gender, height, weight, BMI, allergies).
-- **Medicine Tracking**: List current/past medications and update them.
-- **Health Analytics**: Time-series trend lines, Pearson correlation matrix, and health scores.
-- **Find Doctors**: Search and request access from doctors by specialty.
+- **Registration & Authentication**: JWT-based authentication with bcrypt password encryption.
+- **Dashboard**: Overview of total uploaded reports, flagged abnormalities, and recent reports.
+- **Report Upload**: Multipart PDF/image upload with background text extraction and instant non-medical document validation.
+- **Report Detail Viewer**: Structured lab values table, abnormal indicator badges, reference range evaluation, and AI summaries.
+- **Health Analytics**: Parameter trend charts, Pearson correlation matrix, and status distributions.
+- **Medicine Tracking**: Manage current and historical medications with auto-shifting past status based on end date.
+- **Doctor Network**: Search registered doctors by specialty and manage access permissions.
 
 ### 2.2 Doctor Features
-- **Registration & Login**: JWT authentication with selected specialty taxonomy.
-- **Dashboard & Patient List**: Patient-first workflow displaying only patients who have granted active consent.
-- **Patient Analytics View**: Read-only access to a patient's reports, extracted lab values, medication history, and analytics.
-- **Clinical Notes**: Add notes for patient consultations with a rich-text editor (Quill).
-- **Doctor Profile**: Manage degrees, experience, and clinic details with customizable visibility fields.
-
-### 2.3 Platform Security & Access Control
-- **Role-Based Access Control (RBAC)**: Complete frontend (`RoleRoute`) and backend token authentication blockages for unauthorized resources.
-- **Consent Workflow**: Explicit patient-initiated doctor access request, doctor approval, and instantaneous revocation control.
-- **Data Isolation**: Doctors are restricted from downloading or uploading files.
+- **Doctor Registration**: Specialty taxonomy selection during onboarding.
+- **Patient Access Dashboard**: Patient-first view displaying only patients with active, approved consent.
+- **Clinical Analytics View**: Read-only access to an authorized patient's lab values, trends, and medication history.
+- **Consultation Notes**: Rich-text clinical note creation for patient encounters using Quill.
+- **Doctor Profile**: Manage qualifications, clinic details, and field visibility settings.
 
 ---
 
@@ -80,555 +71,348 @@ The **Medical Report Analyzer** automates the entire workflow:
 
 | Layer | Technology | Version | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Frontend** | React | 18.2.0 | UI component library |
-| | React Router DOM | 6.20.0 | Client-side routing |
+| **Frontend** | React | 18.2.0 | UI component framework |
+| | Vite | 5.0.8 | Frontend build tool and dev server |
+| | React Router DOM | 6.20.0 | Single-page application routing |
 | | TanStack React Query | 5.99.0 | Server state synchronization & caching |
-| | Axios | 1.6.2 | HTTP client with automatic logging interceptors |
-| | Recharts | 3.8.1 | Interactive charts/graphs |
+| | Axios | 1.6.2 | HTTP client with request correlation interceptors |
+| | Recharts | 3.8.1 | Interactive charts & analytics visualization |
 | | Tailwind CSS | 3.3.6 | Utility-first CSS styling |
+| | Socket.IO Client | 4.8.3 | Real-time websocket client updates |
 | **Backend** | Node.js | ^20.x | JavaScript runtime environment |
 | | Express.js | 4.19.2 | Web API framework |
-| | Winston Logger | 3.19.0 | Centralized, structured JSON logging |
-| | Multer | 1.4.5 | Multipart file upload handling |
-| | jsonwebtoken, bcryptjs | 9.0.2 / 2.4.3 | Authentication & password encryption |
-| **Database** | MongoDB | Atlas/Local | Document database |
-| | Mongoose | 8.2.0 | Object Document Mapper (ODM) |
-| **OCR & Processing** | Tesseract.js | 7.0.0 | JS-native image text extractor |
-| | pdf-parse | 2.4.5 | JS-native PDF text extractor |
-| **AI Summarization** | OpenRouter API | - | LLM-based intelligent reports summarizer |
+| | Helmet | 8.3.0 | HTTP security headers middleware |
+| | Express Rate Limit | 8.7.0 | API rate limiting protection |
+| | Winston | 3.19.0 | Centralized structured JSON logging |
+| | Multer | 1.4.5 | Multipart file upload handling with 10MB limit |
+| | Socket.IO | 4.8.3 | Real-time websocket server |
+| | jsonwebtoken, bcryptjs | 9.0.2 / 2.4.3 | Authentication & password hashing |
+| **Database** | MongoDB / Mongoose | 8.2.0 | Document database & ODM |
+| **OCR Engine** | Scribe.js OCR / Tesseract.js / pdf-parse | 0.14.6 / 7.0.0 / 2.4.5 | Multi-page PDF and image text recognition |
+| **AI Inference** | Hugging Face Inference SDK | 4.13.28 | Model: `Qwen/Qwen2.5-7B-Instruct`<br>Provider: `featherless-ai` |
 
 ---
 
 ## 4. System Architecture
 
-### 4.1 High-Level Architecture Diagram
 ```
-  ┌──────────────────────────────────────────────────────────┐
-  │                      Vite + React SPA                    │
-  │   - Centralized Logger  - Error Boundary  - Axios Client │
-  └──────────────────────────┬───────────────────────────────┘
-                             │
-                      HTTP / REST (JSON)
-                    x-request-id + Bearer JWT
-                             │
-                             ▼
-  ┌──────────────────────────────────────────────────────────┐
-  │                    Express.js Backend                    │
-  │   - requestLogger  - authMiddleware  - AppError Mapping  │
-  └──────────┬──────────────────────────────────────┬────────┘
-             │                                      │
-       DB Operations                           Async Calls
-             │                                      │
-             ▼                                      ▼
-  ┌──────────────────────┐               ┌──────────────────────┐
-  │   MongoDB Database   │               │   OpenRouter AI API  │
-  │  - Mongoose Schemas  │               │   - LLM Summaries    │
-  └──────────────────────┘               └──────────────────────┘
-```
-
-### 4.2 Logging & Correlation Flow
-```
-Client Action ──► Axios Interceptor ──► Assigns x-request-id
-                     │
-                     ▼
-Express Server ──► requestLogger ──► Instantiates AsyncLocalStorage
-                     │
-                     ├─► Service Layer (Logs carry requestId automatically)
-                     ├─► Database Layer (Logs carry requestId automatically)
-                     ▼
-Response ◄──────── Returns x-request-id (Correlates client/server diagnostics)
+┌───────────────────────────────────────────────────────────────────┐
+│                    React SPA (Netlify)                            │
+│  - Axios Client (x-request-id)  - React Query  - Recharts UI     │
+└─────────────────────────────────┬─────────────────────────────────┘
+                                  │
+                          HTTPS / REST API
+                       Bearer JWT + CORS_ORIGIN
+                                  │
+                                  ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                  Express.js Backend (Render)                      │
+│  - Helmet Headers  - Rate Limiter  - Request Logger (Winston)     │
+│  - Multer Uploads  - Auth Middleware  - Error Sanitization Handler │
+└──────┬──────────────────────────┬──────────────────────────┬──────┘
+       │                          │                          │
+  Mongoose ODM               Background OCR              Inference API
+       │                    (Concur. = 1)                    │
+       ▼                          ▼                          ▼
+┌──────────────┐          ┌──────────────┐          ┌──────────────────────┐
+│ MongoDB      │          │ Scribe.js    │          │ Hugging Face API     │
+│ Atlas        │          │ OCR Engine   │          │ Qwen2.5-7B-Instruct  │
+└──────────────┘          └──────────────┘          │ (featherless-ai)     │
+                                                    └──────────────────────┘
 ```
 
 ---
 
-## 5. Folder Structure
+## 5. PDF Upload & Storage Lifecycle
+
+The application follows an **ephemeral storage pattern** optimized for Render's non-persistent container filesystem:
+
+1. **Initial Staging**: When a user uploads a PDF, Multer writes the file to `backend/uploads/<timestamp>_<filename>`.
+2. **No Permanent PDF Storage**: The original binary PDF is **NEVER** stored permanently on disk, in MongoDB, or in external cloud storage (S3/R2/GCS).
+3. **Data Extraction & Database Persistence**: Only extracted text (`Report.extractedText`), structured parameters (`LabValue` collection), report metadata (`fileName`, `fileType`, `uploadDate`), and AI summaries are saved in MongoDB Atlas.
+4. **Automatic File Deletion**:
+   - **On Success**: As soon as OCR extraction and DB persistence finish, `removeTemporaryFile(filePath)` unlinks the physical PDF from disk and updates `Report.filePath` to `null`.
+   - **On Rejection**: If the file fails non-medical validation, it is deleted from disk immediately via `fs.promises.unlink`.
+   - **On Error**: If OCR or text validation fails, the physical PDF is unlinked immediately and `Report.ocrStatus` is updated to `'failed'`.
+5. **Render Ephemeral Compatibility**: Because physical PDFs exist only for a few seconds during processing, the application requires **no external S3/R2 storage** and is 100% compatible with Render's ephemeral filesystem.
+
+---
+
+## 6. OCR & Clinical Parsing Pipeline
+
+The background OCR pipeline operates with a strictly enforced single-threaded concurrency limit (`MAX_CONCURRENT_OCR = 1`) to prevent CPU saturation:
 
 ```
-├── backend/
-│   ├── src/
-│   │   ├── config/          # Environment & Database connections
-│   │   ├── controllers/     # Route controller endpoints logic
-│   │   ├── errors/          # Custom AppErrors (BadRequest, Unauthorized, etc.)
-│   │   ├── middleware/      # Auth, Zod Validation, requestLogger, errorHandler
-│   │   ├── models/          # Mongoose Schemas (User, Report, LabValue, etc.)
-│   │   ├── routes/          # Express route registration mappings
-│   │   ├── services/        # Business logic services layer
-│   │   └── utils/           # Winston logger, PDF parser, chart SVG generator
-│   ├── uploads/             # Physical medical reports directory
-│   ├── logs/                # Local log output files (combined.log, error.log)
-│   ├── package.json
-│   └── .env
-└── frontend/
-    ├── src/
-    │   ├── components/      # Reusable Layout, RoleRoute, ErrorBoundary, Cards
-    │   ├── contexts/        # React Contexts (AuthContext)
-    │   ├── pages/           # Pages (Dashboard, Reports, Medicines, Profiles)
-    │   ├── utils/           # Client API client (Axios), Centralized Logger
-    │   ├── App.jsx          # Route structures & Provider setup
-    │   └── main.jsx
-    ├── package.json
-    └── tailwind.config.js
+[Upload PDF] ──► Pre-Upload Validation (isMedicalDocument)
+                       │
+                       ├─► Rejected ──► Delete PDF ──► Return HTTP 400 (INVALID_MEDICAL_REPORT)
+                       │
+                       ▼ Accepted
+            Save Report (ocrStatus: pending) ──► Return HTTP 200
+                       │
+                       ▼ Async Queue (ocrQueue concurrency = 1)
+            Scribe.js / pdf-parse OCR Text Extraction
+                       │
+                       ▼
+            Clean Text & Multi-Line Context Reconstruction
+                       │
+                       ▼
+            Structured Lab Parameter Parsing & Unit Validation
+                       │
+                       ▼
+            Deterministic Reference Range Evaluation (within / outside / unknown)
+                       │
+                       ▼
+            Save LabValue Documents to MongoDB
+                       │
+                       ▼
+            Call Hugging Face Inference API (Qwen2.5-7B-Instruct)
+                       │
+                       ▼
+            Sanitize & Ground AI Summary ──► Save Report (ocrStatus: completed, filePath: null)
+                       │
+                       ▼
+            Delete Temporary PDF File from backend/uploads/
 ```
 
 ---
 
-## 6. Database Design (MongoDB & Mongoose)
+## 7. Medical Document Validation
 
-The data layer uses Mongoose Object Document Mapper. Relationships are represented as Document Object Reference IDs (`mongoose.Schema.Types.ObjectId`).
-
-### 6.1 Mongoose Schemas Overview
-
-#### 1. User Schema (`User.js`)
-* `email`: String (Unique, Indexed, required)
-* `passwordHash`: String (required)
-* `fullName`: String (required)
-* `role`: String (enum: `patient`, `doctor`, required)
-* `doctorCategory`: ObjectId (ref: `DoctorCategory`)
-* `doctorSpecialty`: ObjectId (ref: `DoctorSpecialty`)
-* `createdAt`: Date (default: Date.now)
-
-#### 2. DoctorProfile Schema (`Profiles.js`)
-* `user`: ObjectId (ref: `User`, required, Unique)
-* `degrees`: [String]
-* `specialization`: String
-* `experienceYears`: Number
-* `licenseNumber`: String
-* `licenseIssuingAuthority`: String
-* `clinicName`: String
-* `clinicAddress`: String
-* `clinicPhone`: String
-* `clinicEmail`: String
-* `bio`: String
-* `visibleFields`: Map (keys to Boolean options)
-
-#### 3. PatientProfile Schema (`Profiles.js`)
-* `user`: ObjectId (ref: `User`, required, Unique)
-* `age`: Number
-* `gender`: String
-* `heightCm`: Number
-* `weightKg`: Number
-* `bmi`: Number
-* `bloodGroup`: String
-* `allergies`: String
-* `chronicConditions`: String
-* `lifestyleIndicators`: String
-* `emergencyContactName`: String
-* `emergencyContactPhone`: String
-
-#### 4. Report Schema (`ReportAndLabValues.js`)
-* `user`: ObjectId (ref: `User`, required, Indexed)
-* `fileName`: String (required)
-* `filePath`: String (required)
-* `fileType`: String (required)
-* `status`: String (enum: `pending`, `completed`, `invalid`, `failed`, default: `pending`)
-* `ocrStatus`: String (enum: `pending`, `processing`, `completed`, `failed`, default: `pending`)
-* `rejectionReason`: String (Populated if non-medical document gate rejects file)
-* `extractedText`: String
-* `aiSummary`: String
-* `category`: ObjectId (ref: `ReportCategory`)
-* `reportDate`: Date (Indexed)
-* `uploadDate`: Date (default: Date.now)
-
-#### 5. LabValue Schema (`ReportAndLabValues.js`)
-* `report`: ObjectId (ref: `Report`, required, Indexed)
-* `parameterName`: String (required, Indexed)
-* `value`: Number (required for quantitative parameters)
-* `unit`: String (required for quantitative parameters)
-* `valueType`: String (enum: `numeric`, `qualitative`, default: `numeric`)
-* `qualitativeValue`: String (e.g. `Negative`, `Positive`, `Reactive`, `Non-Reactive`)
-* `pageNumber`: Number (1-indexed page where parameter was extracted)
-* `referenceRange`: String
-* `referenceStatus`: String (enum: `within`, `outside`, `unknown`, default: `unknown`)
-* `isAbnormal`: Boolean (default: false)
-* `confidence`: Number (default: 1.0)
-* `sourceText`: String (Original supporting snippet from OCR)
-* `evidenceSource`: String (e.g. `same OCR line`, `multi-line reconstruction`, `qualitative parameter line`)
-
-#### 6. PatientDoctorAccess Schema (`AccessAndCategories.js`)
-* `patient`: ObjectId (ref: `User`, required, Indexed)
-* `doctor`: ObjectId (ref: `User`, required, Indexed)
-* `status`: String (enum: `pending`, `approved`, `rejected`, `revoked`, default: `pending`)
-* `grantedAt`: Date
-* `revokedAt`: Date
-
-#### 7. Message Schema (`Message.js`)
-* `sender`: ObjectId (ref: `User`, required)
-* `receiver`: ObjectId (ref: `User`, required)
-* `messageText`: String (required)
-* `isRead`: Boolean (default: false)
-* `createdAt`: Date (default: Date.now)
+- **Medical Classification Gate (`isMedicalDocument`)**: Validates extracted text against clinical terms (lab analytes, diagnostic headers, medical test names) versus non-medical patterns (invoices, resumes, receipts).
+- **Valid Report Handling**: Saved to MongoDB, processed in background queue, structured parameters saved, AI summary generated, physical file deleted, `ocrStatus` set to `'completed'`.
+- **Non-Medical / Invalid Report Handling**: Immediately rejected at API boundary with HTTP 400 and error code `INVALID_MEDICAL_REPORT`. The uploaded file is deleted from disk instantly without saving a `Report` record in MongoDB. If caught during background processing, existing records are cleaned up and the report is deleted.
+- **OCR Failure Handling**: If PDF text cannot be read or is corrupted, `ocrStatus` is set to `'failed'`, `filePath` is set to `null`, and the temporary file is unlinked.
+- **AI Failure / Timeout Handling**: If the Hugging Face AI API times out (45s) or fails, the system automatically falls back to a deterministic rule-based summary (`Extracted report contains N key indicators...`). Processing still completes successfully (`ocrStatus: 'completed'`) and physical file is deleted.
 
 ---
 
-## 7. Authentication & Authorization
+## 8. AI Summarization & Grounding Engine
 
-### 7.1 JWT Token Lifecycle
-Authentication is stateless. The client logs in, receives a bearer token, and supplies it in the `Authorization: Bearer <token>` header for subsequent requests.
+The application uses Hugging Face Inference for clinical summarization:
 
-### 7.2 Password Hashing
-Managed via `bcryptjs` using a salt work factor of `12`.
-```javascript
-import bcrypt from 'bcryptjs';
-
-// Hashing during registration
-const passwordHash = await bcrypt.hash(password, 12);
-
-// Verification during login
-const isValid = await bcrypt.compare(enteredPassword, user.passwordHash);
-```
-
-### 7.3 Middleware Routing Protection
-```javascript
-// backend/src/middleware/auth.js
-export const authenticateToken = async (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return next(new UnauthorizedError('Token required'));
-  try {
-    const decoded = jwt.verify(token, env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
-    if (!user) return next(new UnauthorizedError('User not found'));
-    
-    req.user = { id: user._id.toString(), email: user.email, role: user.role };
-    
-    // Inject into logger AsyncLocalStorage context
-    const store = loggerContext.getStore();
-    if (store) {
-      store.userId = req.user.id;
-      store.role = req.user.role;
-    }
-    next();
-  } catch (err) {
-    return next(new UnauthorizedError('Invalid credentials'));
+- **SDK**: `@huggingface/inference` (`HfInference`)
+- **Model**: `Qwen/Qwen2.5-7B-Instruct`
+- **Provider**: `featherless-ai`
+- **Timeout**: `45,000ms` (`HF_TIMEOUT_MS`)
+- **Token Limits**: `max_tokens = 220` for report summaries; `max_tokens = 300` for clinical chat.
+- **Compact Structured Payload**: The AI request payload contains **NO raw OCR text**. It sends only a compact JSON representation of parsed lab parameters:
+  ```json
+  {
+    "documentType": "CBC / Hematology Report",
+    "labValues": [
+      { "p": "RANDOM BLOOD SUGAR", "v": "110", "u": "mg/dL", "r": "80-140", "s": "Within Range" }
+    ]
   }
-};
-```
+  ```
+- **Strict Grounding Rules**:
+  - Structured lab data is the sole source of truth.
+  - "Within Range" parameters must strictly state *"within the reference range provided in the report"*.
+  - Parameters with unprovided reference ranges (`Unknown Range`) cannot be classified as normal or abnormal.
+  - Unverified raw OCR artifacts (e.g. E.S.R.) are blocked from AI range classifications.
+  - No independent disease diagnoses or clinical claims.
+  - Maximum of 3 grounded observations.
+- **Sanitizer & Fallback**: `sanitizeAndValidateAiSummary` strips ungrounded statements. If HF inference fails or is unconfigured, rule-based summary generation takes over.
 
 ---
 
-## 8. Backend API Documentation
+## 9. Security & Production Hardening
 
-### 8.1 Authentication
-* `POST /api/auth/register` - Create user. Request body validates against role schemas.
-* `POST /api/auth/login` - Verify credentials and return JWT token.
-* `GET /api/auth/me` - Resolve current user details from JWT token.
-
-### 8.2 Medical Reports
-* `POST /api/reports/upload` - Upload PDF/image (Multipart/form-data). Triggers async background parser.
-* `GET /api/reports` - Query all reports. Evaluates doctor/patient relationships.
-* `GET /api/reports/:id` - Fetch details, parameters, and AI summary.
-* `DELETE /api/reports/:id` - Deletes reports and corresponding lab records.
-
-### 8.3 Patient Analytics & SVG Trends
-* `GET /api/analytics/summary` - General counts, normal/flagged statistics.
-* `GET /api/analytics/comparison` - Returns custom-designed comparisons SVG.
-* `GET /api/analytics/trend/:parameter_name` - Returns dynamically generated vector SVG trend line.
-* `GET /api/analytics/correlation` - Pearson correlation matrix coefficients.
-
-### 8.4 Doctor Access
-* `POST /api/access/request` - Patient requests access to a doctor.
-* `POST /api/access/approve/:request_id` - Doctor accepts access.
-* `POST /api/access/revoke/:request_id` - Patient revokes doctor access.
+- **Helmet Header Protection**: `helmet()` middleware enforces HTTP security headers (CSP, HSTS, X-Frame-Options).
+- **API Rate Limiting**: `express-rate-limit` enforces a 300 requests per 15-minute window limit across `/api` routes.
+- **Configurable CORS**: Replaced wildcard CORS with dynamic `CORS_ORIGIN` validation. Supports comma-separated origin lists with `credentials: true`. Fails closed (blocks all cross-origin requests) in production if `CORS_ORIGIN` is missing.
+- **Production Error Masking**: `errorHandler` middleware masks internal 500 error details with a generic `'Internal Server Error'` response in production (`NODE_ENV === 'production'`) while logging full stack traces server-side.
+- **Upload Size Limit**: Multer configured with `limits: { fileSize: 10 * 1024 * 1024 }` (10MB max). Oversized files return a clean HTTP 400 error.
+- **Log Sanitization**: Removed sensitive patient AI summary text from production logs. Winston logger automatically redacts passwords, tokens, and authorization keys.
+- **JWT & Password Security**: Passwords hashed with `bcryptjs` (salt factor 12). Stateless authentication via `Authorization: Bearer <token>` headers.
 
 ---
 
-```
-[Upload PDF/Image] ──► Save Report metadata (ocrStatus: pending)
-                             │
-                             ▼
-                    Return status 200 Success to Client
-                             │
-                             ├─► [processReportInBackground Execution]
-                             │   ├── 1. File Header & Binary Validation: verifyFileHeader()
-                             │   ├── 2. Medical Classification Gate: isMedicalDocument() (Accept medical / Reject non-medical)
-                             │   ├── 3. Document Extraction: Scribe.js OCR (scribe.js-ocr Engine)
-                             │   ├── 4. OCR Normalization: Strips noise & cleans character misreads
-                             │   ├── 5. Document Classification: Laboratory / Pathology / Radiology / Prescription
-                             │   ├── 6. Multi-Line Reconstruction: Context-aware line merging (prevCleanRaw)
-                             │   ├── 7. Parameter Parsing: Numeric bio-assays & qualitative results (Positive/Negative)
-                             │   ├── 8. Safety & Rejection Audit: Rejects administrative numbers, dates & narrative ranges
-                             │   ├── 9. Reference Status Evaluation: Calculates within / outside / unknown deterministically
-                             │   ├── 10. Deduplication & DB Persistence: LabValue.deleteMany() -> LabValue.insertMany()
-                             │   ├── 11. AI Summarization: Local Ollama (llama3.2:3b) structured summary & observations
-                             │   └── 12. State Finalization: ocrStatus -> completed (or invalid / failed)
-```
+## 10. Database Design (MongoDB & Mongoose)
 
-### 9.1 Clinical Extraction & Safety Rules
-- **Medical Classification Gate (`isMedicalDocument`)**: Synchronously validates extracted text against clinical terms (lab analytes, diagnostic headers, clinical findings) versus non-medical patterns (invoices, resumes, bank statements). Non-medical uploads are immediately rejected at the API boundary with HTTP status 400 and machine-readable code `INVALID_MEDICAL_REPORT`, preventing non-medical files from persisting in MongoDB or polluting user report listings. The frontend renders an explicit "Invalid Report" modal explaining the rejection.
-- **Scribe.js OCR Integration**: Uses `scribe.js-ocr` for robust multi-page PDF rendering and text recognition.
-- **Context-Aware Multi-Line Reconstruction**: Dynamically reconstructs split parameters (e.g. parameter header line + value/unit line) using preceding line context (`prevCleanRaw.trim()`) while explicitly excluding administrative headers (`Department of Pathology`, `Hospital`, `Clinic`, etc.).
-- **Qualitative Parameter Extraction**: Supports qualitative results (e.g. *Oligoclonal Bands $\rightarrow$ Positive / Negative*, *HBsAg $\rightarrow$ Reactive*) mapping `valueType` to `qualitative` and preserving original page locations (`pageNumber`).
-- **Negative Extraction Safety & Rejection**:
-  - Rejects reference-only ranges inside narrative text (e.g., *"glucose levels in CSF (45-80 mg/dl)"*).
-  - Rejects administrative metadata (LAB IDs, receipt numbers, phone numbers, page numbers, patient demographics).
-  - Rejects malformed OCR snippets lacking parameter names.
-- **Reference Range Status Evaluation**: Deterministically calculates `referenceStatus` (`within`, `outside`, `unknown`) without fabricating unprovided reference ranges.
+### 10.1 Key Models
 
-### 9.2 MongoDB ↔ API ↔ Frontend Data Contract Invariants
-- **Count Equality Invariant**: For any report, `MongoDB count == API lab_values.length == Frontend labValues.length`.
-- **Deterministic UI Rendering**:
-  - If $N > 0$: Renders all $N$ parameters in the **Lab Values table** and **Universal Standard Range Comparison** without disappearing.
-  - If $N = 0$: Renders the structured empty-state message: *"No structured laboratory measurements were found in this report."*
+1. **User (`User.js`)**: `email`, `passwordHash`, `fullName`, `role` (`'patient'` / `'doctor'`), `doctorCategory`, `doctorSpecialty`.
+2. **Report (`ReportAndLabValues.js`)**: `user`, `fileName`, `filePath` (set to `null` post-processing), `fileType`, `uploadDate`, `reportDate`, `ocrStatus` (`'pending'` / `'processing'` / `'completed'` / `'failed'`), `rejectionReason`, `extractedText`, `aiSummary`, `aiSummaryData`, `category`.
+3. **LabValue (`ReportAndLabValues.js`)**: `report`, `parameterName`, `valueType` (`'numeric'` / `'qualitative'`), `value`, `qualitativeValue`, `unit`, `referenceRange`, `referenceStatus` (`'within'` / `'outside'` / `'unknown'`), `isAbnormal`, `confidence`, `pageNumber`, `sourceText`, `evidenceSource`.
+4. **PatientDoctorAccess (`AccessAndCategories.js`)**: `patient`, `doctor`, `status` (`'pending'` / `'approved'` / `'rejected'` / `'revoked'`), `grantedAt`, `revokedAt`.
+5. **DoctorProfile & PatientProfile (`Profiles.js`)**: Specialty credentials, patient health metrics (BMI, blood group, allergies), and doctor visibility settings.
 
 ---
 
-## 10. Medicine Management
+## 11. Authentication & Access Control
 
-- **Patient Access**: CRUD actions to record prescription drugs, dosage, frequency, start date, and current/past status.
-- **Doctor Access**: Read-only tracking of active patient medications, with the ability to append modifications for authorized patients.
-
----
-
-## 11. Doctor-Patient Access System
-
-Access control operates on an explicit consent model:
-1. Patients search for doctors based on categories and specialties.
-2. A patient sends a connection request (`PatientDoctorAccess` record with state `pending`).
-3. The doctor views this connection under requests and accepts (`approved`) or declines (`rejected`).
-4. Upon approval, the patient appears in the doctor's "Your Patients" list.
-5. If the patient revokes access (`revoked`), the doctor loses access instantly.
+- **Role-Based Access Control (RBAC)**: Enforced via `authenticateToken` middleware and frontend `RoleRoute` wrappers.
+- **Consent-Based Access**: Doctors can ONLY access reports and analytics for patients who have explicitly sent and approved an access request (`PatientDoctorAccess`). Access can be revoked by the patient at any time.
 
 ---
 
-## 12. Analytics & SVG Generation Module
+## 12. Backend API Documentation
 
-### 12.1 Dynamic SVG Generation
-Instead of using front-end canvas libraries, the backend generates crisp vector SVGs dynamically:
-- **Trend Charts (`/api/analytics/trend/:parameter_name`)**: Resolves historic parameter entries, projects coordinates, and generates path tags (`<path d="..." />`), gridlines, and labels.
-- **Comparison Heatmaps (`/api/analytics/comparison`)**: Draws parameter boxes, scales heights relative to universal ranges, and colors elements based on abnormality.
+### Authentication
+- `POST /api/auth/register` — Register a new patient or doctor account.
+- `POST /api/auth/login` — Authenticate credentials and receive a JWT.
+- `GET /api/auth/me` — Resolve current user context from JWT token.
 
-### 12.2 Pearson Correlation Matrix
-Computed on-the-fly using the Pearson correlation coefficient algorithm to reveal dependencies between variables:
-$$r = \frac{\sum (x - \bar{x})(y - \bar{y})}{\sqrt{\sum (x - \bar{x})^2 \sum (y - \bar{y})^2}}$$
+### Medical Reports
+- `POST /api/reports/upload` — Upload medical PDF or image (10MB max).
+- `GET /api/reports` — Fetch report listings (filtered by patient consent for doctors).
+- `GET /api/reports/:id` — Fetch detailed report metadata, lab values, and AI summary.
+- `DELETE /api/reports/:id` — Delete a report and its associated lab values.
 
----
+### Analytics
+- `GET /api/analytics/summary` — Patient lab summary statistics (total, normal, abnormal).
+- `GET /api/analytics/trend/:parameter_name` — Time-series trend data for a specific lab parameter.
+- `GET /api/analytics/correlation` — Pearson correlation matrix coefficients.
 
-## 13. AI/ML Summary Module
-
-Summaries and clinical observations are generated through a grounded, schema-validated local AI pipeline:
-
-1. **Local Ollama Inference Engine (`ollamaChat.js`)**: Connects to a locally running Ollama instance (`llama3.2:3b` model at `http://127.0.0.1:11434`) for offline privacy and fast zero-cost processing.
-2. **Strict Grounding & Authoritative Lab Data Rules**:
-   - **Structured Data Sole Source of Truth**: The structured lab parameters, values, reference ranges, and calculated statuses are the authoritative source of truth.
-   - **Reference Range Grounding**: When referring to "Within Range" parameters, the summary strictly uses phrasing such as *"within the reference range provided in the report"*, avoiding assumptions of universal or standard ranges.
-   - **Unknown Range Preservation**: Parameters with `Unknown Range` (null reference ranges) are strictly unclassified and cannot receive artificial or inferred ranges.
-   - **Raw Context Entity Blocking**: Parameters not present in the authoritative lab dataset (such as raw OCR artifacts like E.S.R.) are blocked from range classifications.
-   - **No Independent Disease Diagnoses**: The model cannot infer unstated diseases unless explicitly present in report text.
-3. **Structured JSON Output Enforcement**: Enforces a strict JSON response schema returning a high-level `summary`, overall status (`Normal`, `Needs Review`, `Insufficient Information`), and array of grounded `observations` with exact supporting source text snippets.
-4. **Sanitization & Fallback Engine**: Applies sentence-aware, structure-preserving sanitization (`sanitizeAndValidateAiSummary`) and applies rule-based summary fallbacks if AI inference times out or returns ungrounded statements.
+### Doctor Access
+- `POST /api/access/request` — Patient sends access request to a doctor.
+- `POST /api/access/approve/:request_id` — Doctor approves patient access request.
+- `POST /api/access/revoke/:request_id` — Patient revokes doctor access.
 
 ---
 
-## 14. Frontend Architecture
+## 13. Environment Variables
 
-- **State Sync**: React Query maintains server state synchronization, cache invalidation, and optimistic updates.
-- **UI Components**: Structured with Tailwind CSS and modular layouts.
-- **Global Error Handling (`frontend/src/components/ErrorBoundary.jsx`)**: Class component wrapping the app shell. Catch-blocks format error payloads and submit them to the server log endpoint.
-- **Centralized Logger (`frontend/src/utils/logger.js`)**: Decouples terminal tracing. Forwards production warnings/errors to `/api/logs` via HTTP.
+Strictly validated at backend startup via Zod (`backend/src/config/env.js`).
 
----
+### Backend Environment Variables (Render)
 
-## 15. Backend Architecture & Central Logging System
+| Variable | Required? | Default | Description |
+|---|:---:|---|---|
+| `PORT` | No | `8000` | HTTP server port |
+| `NODE_ENV` | No | `development` | Environment mode (`development`, `production`, `test`) |
+| `MONGODB_URI` | **Yes** | — | MongoDB Atlas connection string |
+| `JWT_SECRET` | **Yes** | — | Secret key for signing JWT authentication tokens |
+| `HF_TOKEN` | No | — | Hugging Face API access token for AI summarization |
+| `HF_MODEL` | No | `Qwen/Qwen2.5-7B-Instruct` | Hugging Face model identifier |
+| `HF_TIMEOUT_MS` | No | `45000` | Hugging Face API timeout in milliseconds |
+| `CORS_ORIGIN` | No | — | Allowed frontend origin URL(s), comma-separated |
 
-### 15.1 Logging Infrastructure
-- **Winston Centralized Logging**: Outputs JSON formatted logs in production and clean console text in development.
-- **Sensory Security**: Formatting functions scan log metadata to automatically censor properties containing sensitive keywords (like password, token, key).
-- **Context Storage Middleware**: Creates an execution scope mapping `x-request-id` to the context:
-```javascript
-// backend/src/middleware/requestLogger.js
-export const requestLogger = (req, res, next) => {
-  const startTime = process.hrtime();
-  const requestId = req.headers['x-request-id'] || crypto.randomUUID();
-  
-  const contextStore = {
-    requestId,
-    ip: req.ip || req.headers['x-forwarded-for'],
-    userAgent: req.headers['user-agent']
-  };
-  
-  loggerContext.run(contextStore, () => {
-    res.on('finish', () => {
-      const diff = process.hrtime(startTime);
-      const durationMs = Math.round(diff[0] * 1e3 + diff[1] * 1e-6);
-      logger.info(`API ${req.method} ${req.originalUrl} - Status: ${res.statusCode} (${durationMs}ms)`);
-    });
-    next();
-  });
-};
-```
+### Frontend Environment Variables (Netlify)
+
+| Variable | Required? | Description |
+|---|:---:|---|
+| `VITE_API_BASE_URL` | **Yes** | Full URL of backend API (e.g. `https://medical-analyzer-api.onrender.com`) |
+
+> [!IMPORTANT]
+> Backend secrets (`HF_TOKEN`, `JWT_SECRET`, `MONGODB_URI`) MUST remain on Render only. Never expose secrets to the frontend via `VITE_*` variables.
 
 ---
 
-## 16. Setup Instructions
+## 14. Local Development
 
 ### Prerequisites
-- Node.js (v18.x or higher)
-- MongoDB Instance (Atlas cluster URL or Local instance)
+- Node.js (v18+ or v20+)
+- MongoDB instance (local or MongoDB Atlas cluster)
 
-### Installation
+### 1. Setup Backend
+```bash
+cd backend
+npm install
+```
+Create `backend/.env`:
+```env
+PORT=8000
+NODE_ENV=development
+MONGODB_URI=mongodb://127.0.0.1:27017/medical_analyzer
+JWT_SECRET=your_local_dev_secret_key
+HF_TOKEN=your_hugging_face_token
+HF_MODEL=Qwen/Qwen2.5-7B-Instruct
+HF_TIMEOUT_MS=45000
+CORS_ORIGIN=http://localhost:5173
+```
+Run Backend in development mode:
+```bash
+npm run dev
+```
 
-1. **Clone the repository** and navigate to the project directory:
-   ```bash
-   cd project3
-   ```
-
-2. **Configure Backend**:
-   Create `backend/.env`:
-   ```env
-   PORT=8000
-   MONGODB_URI=mongodb://127.0.0.1:27017/medical_analyzer
-   JWT_SECRET=super_secret_jwt_key_123!
-   OLLAMA_BASE_URL=http://127.0.0.1:11434
-   OLLAMA_MODEL=llama3.2:3b
-   NODE_ENV=development
-   ```
-
-3. **Install dependencies & start Backend**:
-   ```bash
-   cd backend
-   npm install
-   npm run dev
-   ```
-
-4. **Run Automated Test & Hardening Suites**:
-   To execute the comprehensive clinical extraction and UI data contract test suites:
-   ```bash
-   cd backend
-   
-   # Run AI Summary Grounding & Classification Sanitizer Regression Suite
-   node src/tests/aiSummaryGroundingRegression.test.js
-
-   # Run Document Classification & Database Persistence Suite (Validates Non-Medical Rejection & Param Persistence)
-   node src/tests/classificationAndPersistence.test.js
-
-   # Run Production End-to-End Pipeline & Count Invariant Suite
-   node src/tests/productionPipelineEndToEnd.test.js
-   
-   # Run MongoDB -> API -> Frontend Data Contract Regression Suite
-   node src/tests/uiDataContractRegression.test.js
-   
-   # Run Full Clinical Extraction Regression Suite (PDF2, PDF4, PDF5)
-   node src/tests/fullExtractionRegression.test.js
-   ```
-
-4. **Configure Frontend**:
-   Create `frontend/.env`:
-   ```env
-   VITE_API_BASE_URL=http://localhost:8000
-   ```
-
-5. **Install dependencies & start Frontend**:
-   ```bash
-   cd ../frontend
-   npm install
-   npm run dev
-   ```
+### 2. Setup Frontend
+```bash
+cd ../frontend
+npm install
+```
+Create `frontend/.env`:
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+Run Frontend in development mode:
+```bash
+npm run dev
+```
 
 ---
 
-## 17. Sample Credentials & Dummy Data
+## 15. Automated Testing & Regression Suites
 
-The database is seeded automatically with dummy datasets upon connection.
+The project contains 8 automated test suites verifying OCR parsing, token compaction, grounding rules, and data invariants:
 
-- **Patient Account**:
-  - Email: `patient@example.com`
-  - Password: `Password123`
-- **Doctor Account**:
-  - Email: `cardiologist@example.com`
-  - Password: `password123`
+```bash
+cd backend
 
----
+# Run Extraction & Token Optimization Suite (Payload compacting, max_tokens=220, grounding)
+node --test src/tests/extractionAndTokenOptimization.test.js
 
-## 18. Application Usage & User Flows
+# Run Hugging Face Featherless AI Integration Test Suite
+node --test src/tests/hfSummaryIntegration.test.js
 
-This section explains how to use the application step-by-step for testing or local development.
+# Run AI Grounding & Sanitizer Regression Suite
+node --test src/tests/aiSummaryGroundingRegression.test.js
 
-### 18.1 Patient User Journey
+# Run Document Classification & Database Persistence Suite
+node --test src/tests/classificationAndPersistence.test.js
 
-1. **Registration & Profile Creation**
-   - Click "Register", select the **Patient** role, and sign up.
-   - Go to **Profile** and fill in your details (Age, Gender, Weight, Height, Blood Group, Allergies, Chronic Conditions). Your BMI will be calculated automatically.
-   
-2. **Uploading Medical Reports**
-   - Navigate to the **Upload Report** section.
-   - Select a standard medical report (PDF or Image, e.g., blood test reports containing HbA1c, Hemoglobin, RBC, WBC, Cholesterol, LDL, or HDL).
-   - Once submitted, you'll be redirected to the **Reports** page. The document status will be shown as **pending** or **processing**.
-   - Within seconds, the status will update to **completed**. Click **View Report** to review extracted lab values, normal/abnormal ranges, and the AI-generated report summary.
+# Run Concurrent OCR Queue Suite (Concurrency = 1 verification)
+node --test src/tests/concurrentOcrQueue.test.js
 
-3. **Tracking Medications**
-   - Navigate to **Medicines**.
-   - Add new prescriptions (Name, Dosage, Frequency, Start Date, and optional End Date).
-   - Once the End Date passes, the system automatically shifts the medicine from **Current** to **Past** status. You can also manually stop a current medication.
+# Run Full Clinical Extraction Regression Suite
+node --test src/tests/fullExtractionRegression.test.js
 
-4. **Connecting with Doctors**
-   - Click **Find Doctors**. Search for doctors by specialty category (e.g., Cardiology, Neurology) or by doctor name.
-   - Click **Request Access** on a doctor's card. This sends an access request to that doctor. Access remains **pending** until the doctor approves it. You can revoke it at any point.
+# Run Production End-to-End Pipeline Audit Suite
+node --test src/tests/productionPipelineEndToEnd.test.js
 
-5. **Viewing Health Analytics**
-   - Go to the **Analytics** page.
-   - **Health Summary**: Displays key statistics like Total Reports, Flagged (Abnormal) Values, and Normal Values alongside abnormal parameters highlighted in red.
-   - **Parameter Trends**: Toggle specific lab parameters (e.g., HbA1c, LDL) to render interactive trend line graphs showing value changes over time.
-   - **Correlation Heatmap**: Visualizes relationships between different lab values calculated using the Pearson correlation coefficient.
+# Run UI Data Contract Regression Suite
+node --test src/tests/uiDataContractRegression.test.js
+```
 
 ---
 
-### 18.2 Doctor User Journey
+## 16. Production Deployment (Netlify + Render)
 
-1. **Registration & Specialty Setup**
-   - Register as a **Doctor**. You must select a specialty Category (e.g., Cardiology) and Specific Specialty (e.g., Heart) during registration.
-   
-2. **Managing Patient Access Requests**
-   - Upon logging in, go to the **Dashboard**.
-   - Check the **Patient Access Requests** section. You will see incoming requests from patients requesting connection.
-   - Click **Approve** to accept a request or **Reject** to deny it.
+### 16.1 Netlify Deployment (Frontend)
+- **Base directory**: `frontend`
+- **Build command**: `npm run build`
+- **Publish directory**: `dist`
+- **Environment variable**: `VITE_API_BASE_URL` = `https://<your-render-app>.onrender.com`
+- **SPA Routing**: Handled via `frontend/public/_redirects` (`/* /index.html 200`).
 
-3. **Reviewing Patient Records (Patient-First Analytics)**
-   - Click **Your Patients** from the sidebar or dashboard.
-   - You will see a list of patients who have approved your access. You can search patients by name or email.
-   - Click **View Analytics** on any patient.
-   - This opens a patient-specific clinical screen where you can:
-     - View their extracted lab parameters, abnormalities, and AI-generated report summaries.
-     - Look over their current and historical medication lists.
-     - View their trend lines and correlation matrix.
-     - **Add Clinical Notes**: Write a consult note using the Quill rich-text editor. These notes are saved to the patient's record.
+### 16.2 Render Deployment (Backend)
+- **Service type**: Web Service
+- **Root directory**: `backend`
+- **Build command**: `npm install`
+- **Start command**: `npm start`
+- **Health check path**: `/health`
+- **Environment variables**: `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET`, `HF_TOKEN`, `HF_MODEL`, `HF_TIMEOUT_MS`, `CORS_ORIGIN=https://<your-netlify-app>.netlify.app`
 
----
-
-## 19. Interview Preparation Guide
-
-This layout prepares you to discuss architectural details suitable for senior developer roles:
-- **Core Architecture**: Node.js/Express with MongoDB offers non-blocking async execution, ideal for processing metadata and concurrent OCR uploads.
-- **Logging Design**: The combination of `AsyncLocalStorage` and `Winston` ensures request lifecycle tracking without manual ID passing, providing structured correlation logs.
-- **Client Stability**: Using a global React Error Boundary prevents blank screens on component rendering exceptions, and log reporting helps developers catch client errors in production.
+### 16.3 MongoDB Atlas Configuration
+- Add `0.0.0.0/0` to **Network Access IP Whitelist** to allow connections from Render's dynamic egress IP pool.
 
 ---
 
-## 20. Interview Questions & Answers (Node.js & MongoDB)
+## 17. Database Seeding
 
-**Q1: Explain the request lifecycle in your Express.js backend for protected routes.**
-- Client requests hit the Express routing chain.
-- The `requestLogger` middleware executes, establishes an `AsyncLocalStorage` store, and issues a correlation `x-request-id`.
-- The `authenticateToken` middleware parses the authorization header, verifies the JWT, retrieves the Mongoose User document, and attaches the user payload to `req.user` while updating the storage context.
-- The route controller processes the request and contacts database models.
-- If errors arise, `next(error)` hands them to the global `errorHandler` middleware. Otherwise, a response is returned.
-
-**Q2: How does your application process documents in the background without blocking execution?**
-- In `uploadReport` within `reportsService.js`, once Multer stores the physical file and a database record is created with an `ocrStatus` of `pending`, the service calls `processReportInBackground(reportId, filePath)` without awaiting it.
-- Express returns a `200 Success` status to the patient immediately.
-- The background promise runs independently, handles parsing (`pdf-parse` or Tesseract OCR), queries Mongoose to save parameters, and updates `ocrStatus` to `completed` or `failed`.
-
-**Q3: How do Mongoose schemas compare to traditional MySQL schemas in this application?**
-- Node/Mongoose handles structured data (e.g., embedding visibility parameters inside a map property within `DoctorProfile`) without requiring complex SQL joins.
-- We implement references (`ref`) to link documents (e.g., `LabValue` references `Report`), maintaining relational-like consistency in MongoDB.
+- **Development Mode**: `seedDatabase()` runs automatically on backend startup when `NODE_ENV === 'development'`.
+- **Production Mode**: Automatic startup seeding is **disabled** when `NODE_ENV === 'production'`.
+- **Manual Production Seeding**: To populate taxonomy data (report categories, doctor specialties, reference ranges) in production, execute the seed script manually from the backend terminal:
+  ```bash
+  node src/utils/seed.js
+  ```
 
 ---
 
-## 21. Current Limitations & Future Enhancements
+## 18. Production Notes & Limitations
 
-- **Limitations**:
-  - OCR performance is bound to single-threaded Node execution unless offloaded to worker threads.
-  - Quantitative lab parsers reject non-bioassay units (e.g. anatomical dimensions like `mm` in MRI reports) to protect blood lab dataset integrity.
-  - JWT tokens cannot be invalidated mid-lifespan without database token blacklists.
-- **Future Enhancements**:
-  - **Multi-Modal Imaging & Radiology Model**: Introduce a dedicated `structuredFindings` model for MRI/CT/X-Ray anatomical measurements (e.g., disc heights, organ dimensions) to display alongside blood lab values without schema pollution.
-  - Offload CPU-intensive OCR processes to worker threads or external serverless endpoints.
-  - Add a refresh token rotation flow
+- **Ephemeral Storage**: Physical PDFs are deleted immediately after text extraction. The application does not retain original uploaded files on disk or in the database.
+- **OCR Concurrency**: Background OCR processing operates with a concurrency limit of `1` (`MAX_CONCURRENT_OCR = 1`) to preserve server memory and CPU resources.
+- **Synchronous Pre-Check**: Pre-upload medical document validation runs synchronously during upload. Large PDF files (10MB) may take 15–30 seconds to parse.
+- **Medical Disclaimer**: This application is a technical demonstration for clinical data extraction, visualization, and AI summarization. It is not a certified medical device and should not be used for emergency medical diagnosis.
