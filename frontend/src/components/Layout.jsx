@@ -1,13 +1,16 @@
+import { useState } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { FileText, Home, User, LogOut, Stethoscope, Search, TrendingUp, MessageCircle } from 'lucide-react'
+import { FileText, Home, User, LogOut, Stethoscope, Search, TrendingUp, MessageCircle, Menu, X } from 'lucide-react'
 
 export default function Layout() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const handleLogout = () => {
+    setIsMobileMenuOpen(false)
     logout()
     navigate('/login')
   }
@@ -45,7 +48,7 @@ export default function Layout() {
               </h1>
             </a>
 
-            {/* Center Navigation Links */}
+            {/* Center Navigation Links (Desktop) */}
             <div className="hidden md:flex items-center space-x-2 lg:space-x-6 flex-1 justify-center max-w-3xl">
               {navItems.map((item) => {
                 const Icon = item.icon
@@ -67,7 +70,7 @@ export default function Layout() {
               })}
             </div>
 
-            {/* Right User Info & Logout */}
+            {/* Right User Info & Logout (Desktop + Mobile Toggle) */}
             <div className="flex items-center space-x-3 shrink-0">
               <div className="hidden sm:flex items-center space-x-1.5 text-sm text-gray-700">
                 <User className="w-4 h-4 text-gray-500 shrink-0" />
@@ -83,10 +86,59 @@ export default function Layout() {
                 <LogOut className="w-4 h-4 mr-1.5" />
                 Logout
               </button>
+
+              {/* Mobile Hamburger Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors"
+                aria-expanded={isMobileMenuOpen}
+                aria-label="Toggle navigation menu"
+              >
+                {isMobileMenuOpen ? (
+                  <X className="w-6 h-6 shrink-0" />
+                ) : (
+                  <Menu className="w-6 h-6 shrink-0" />
+                )}
+              </button>
             </div>
 
           </div>
         </div>
+
+        {/* Mobile Collapsible Navigation Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200 bg-white px-4 pt-2 pb-4 space-y-1 shadow-lg">
+            {/* Mobile User Info */}
+            <div className="flex sm:hidden items-center px-3 py-2 text-sm text-gray-700 border-b border-gray-100 mb-2">
+              <User className="w-4 h-4 mr-2 text-gray-500 shrink-0" />
+              <span className="font-medium text-gray-800 truncate" title={user?.full_name || user?.email}>
+                {user?.full_name || user?.email || 'User'}
+              </span>
+              <span className="text-xs text-gray-400 ml-1 capitalize">({user?.role || 'user'})</span>
+            </div>
+
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = location.pathname === item.path
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center px-3 py-2.5 rounded-md text-base font-medium transition-colors ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-600 font-semibold'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 mr-3 shrink-0" />
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </nav>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 flex-1 w-full">
