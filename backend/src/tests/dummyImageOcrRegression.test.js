@@ -1,8 +1,9 @@
 import scribe from 'scribe.js-ocr';
 import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
+import { gs } from 'scribe.js-ocr/js/generalWorkerMain.js';
 
 async function runTest() {
-  console.log('🧪 RUNNING 150 DPI TARGET PAGE SCALING & PRE-RENDER BYPASS REGRESSION TEST');
+  console.log('🧪 RUNNING 150 DPI TARGET PAGE SCALING, PRE-RENDER BYPASS & WORKER LIFECYCLE REGRESSION TEST');
 
   const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   const dummy = new ImageWrapper(1, DUMMY_PNG, 'gray');
@@ -18,6 +19,10 @@ async function runTest() {
     throw new Error('FAILED: scribe.opt.workerN is not 1');
   }
   console.log('✅ scribe.opt.workerN = 1 verified.');
+
+  // Verify gs.terminate() lifecycle management
+  await gs.terminate();
+  console.log('✅ Initial gs.terminate() verified.');
 
   const doc = new scribe.ScribeDoc();
   doc.inputData.pdfMode = true;
@@ -105,11 +110,17 @@ async function runTest() {
     throw new Error('FAILED: Restoration of original dimensions failed!');
   }
 
-  console.log('✅ TEST PASSED: 150 DPI target page scaling, angle=0 auto-rotate suppression, binary pre-fill, non-target isolation, and dimension restoration verified!');
+  // Verify post-recognition worker pool termination
+  await gs.terminate();
+  console.log('✅ Post-page gs.terminate() verified.');
+
+  console.log('✅ TEST PASSED: 150 DPI target page scaling, angle=0 auto-rotate suppression, binary pre-fill, non-target isolation, dimension restoration, and worker lifecycle termination verified!');
   await doc.close();
+  await gs.terminate();
 }
 
 runTest().catch((err) => {
   console.error('❌ REGRESSION TEST FAILED:', err);
   process.exit(1);
 });
+

@@ -3,6 +3,7 @@ import Tesseract from 'tesseract.js';
 import { createRequire } from 'module';
 import scribe from 'scribe.js-ocr';
 import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
+import { gs } from 'scribe.js-ocr/js/generalWorkerMain.js';
 import { Report, LabValue, ReportCategory, UniversalRange } from '../models/index.js';
 import { inferReportName } from './analytics.js';
 import { logger } from './logger.js';
@@ -1248,7 +1249,10 @@ export async function extractDocumentText(filePath, mimeType = '') {
     const pageCount = doc.inputData?.pageCount || 1;
     logger.info(`[OCR] Stage 10 complete (Scribe pageCount: ${pageCount}) | [RAM] ${getMemStats()}`);
 
-    logger.info(`[OCR] Stage 11: Scribe pre-render / configuration check... | [RAM] ${getMemStats()}`);
+    logger.info(`[OCR] Stage 11: Purging pre-warmed general worker pool before sequential OCR... | [RAM] ${getMemStats()}`);
+    logger.info(`[OCR] Stage 11 BEFORE WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+    await gs.terminate();
+    logger.info(`[OCR] Stage 11 AFTER WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
     logger.info(`[OCR] Stage 12: Scribe sequential single-page recognize starting for ${pageCount} page(s) (mode: speed, target DPI: 150)... | [RAM] ${getMemStats()}`);
 
@@ -1299,8 +1303,9 @@ export async function extractDocumentText(filePath, mimeType = '') {
       ocrPagesMask[pageIdx] = true;
 
       logger.info(`[OCR] Stage 12.${pageIdx + 1} START: Recognizing page ${pageIdx + 1}/${pageCount} at 150 DPI | [RAM] ${getMemStats()}`);
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} BEFORE RECOGNIZE (worker pool recreation if needed) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
       await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: ocrPagesMask });
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} RECOGNIZE DONE | [RAM] ${getMemStats()}`);
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} AFTER RECOGNIZE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
       // Restore original pageMetrics dimensions post-recognize
       if (origWidth && origHeight && doc.pageMetrics && doc.pageMetrics[pageIdx] && doc.pageMetrics[pageIdx].dims) {
@@ -1313,8 +1318,16 @@ export async function extractDocumentText(filePath, mimeType = '') {
         if (Array.isArray(doc.images.native)) doc.images.native.length = 0;
         if (Array.isArray(doc.images.binary)) doc.images.binary.length = 0;
         if (Array.isArray(doc.images.nativeSrc)) doc.images.nativeSrc.length = 0;
+        if (Array.isArray(doc.images.nativeProps)) doc.images.nativeProps.length = 0;
+        if (Array.isArray(doc.images.binaryProps)) doc.images.binaryProps.length = 0;
       }
       logger.info(`[OCR] Stage 12.${pageIdx + 1} complete (bitmaps released) | [RAM] ${getMemStats()}`);
+
+      // Explicitly terminate Scribe general worker pool to free worker isolate, WASM linear memory, and Tesseract neural network workspace back to OS
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} BEFORE WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+      await gs.terminate();
+      if (global.gc) global.gc();
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} AFTER WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
     }
 
     logger.info(`[OCR] Stage 12 complete (All ${pageCount} page(s) recognized at 150 DPI) | [RAM] ${getMemStats()}`);
@@ -1344,12 +1357,19 @@ export async function extractDocumentText(filePath, mimeType = '') {
     if (doc && typeof doc.close === 'function') {
       try {
         await doc.close();
-        logger.info(`[OCR] Stage 14 complete (Scribe doc.close successful) | [RAM] ${getMemStats()}`);
+        logger.info(`[OCR] Stage 14 complete (Scribe doc.close successful) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
       } catch (closeErr) {
         logger.warn(`[OCR] Stage 14 Warning closing ScribeDoc: ${closeErr.message} | [RAM] ${getMemStats()}`);
       }
     } else {
       logger.info(`[OCR] Stage 14 complete (No active Scribe doc to close) | [RAM] ${getMemStats()}`);
+    }
+    try {
+      await gs.terminate();
+      if (global.gc) global.gc();
+      logger.info(`[OCR] Stage 14: Final gs.terminate() complete | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+    } catch (gsErr) {
+      logger.warn(`[OCR] Stage 14 Warning terminating generalWorker: ${gsErr.message} | [RAM] ${getMemStats()}`);
     }
   }
 }
