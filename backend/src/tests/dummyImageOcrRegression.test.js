@@ -1,208 +1,87 @@
-import scribe from 'scribe.js-ocr';
-import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
-import { gs } from 'scribe.js-ocr/js/generalWorkerMain.js';
-import { getPngIHDRInfo } from 'scribe.js-ocr/js/utils/imageUtils.js';
-import { binarizePngTo1bpp } from '../utils/parser.js';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import { binarizePngTo1bpp, extractDocumentText, ocrQueue } from '../utils/parser.js';
 
-async function runTest() {
-  console.log('🧪 RUNNING 1-BPP MONOCHROME BINARY PNG & 150 DPI OCR REGRESSION TEST');
+async function runRegressionSuite() {
+  console.log('🧪 RUNNING LOW-MEMORY pdftoppm + TESSERACT.JS OCR REGRESSION TEST SUITE');
 
-  const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-  const dummy = new ImageWrapper(1, DUMMY_PNG, 'gray');
-
-  if (dummy.n !== 1 || dummy.colorMode !== 'gray' || dummy.src !== DUMMY_PNG) {
-    throw new Error('ImageWrapper instantiation failed');
+  // 1. Verify MAX_CONCURRENT_OCR = 1
+  if (ocrQueue.concurrency !== 1) {
+    throw new Error(`FAILED: ocrQueue concurrency expected 1, got ${ocrQueue.concurrency}`);
   }
-  console.log('✅ ImageWrapper instantiation verified.');
+  console.log('✅ OCR Queue concurrency = 1 verified.');
 
-  // Test 1-bpp binarization logic and verify IHDR info
-  const dummyBuf = Buffer.from(DUMMY_PNG.split(',')[1], 'base64');
-  const binarizedBuf = binarizePngTo1bpp(dummyBuf, 180);
-  const binarizedDataUrl = 'data:image/png;base64,' + binarizedBuf.toString('base64');
-  const ihdr = getPngIHDRInfo(new Uint8Array(binarizedBuf));
+  // 2. Create a temporary 2-page test PDF for scanned OCR testing
+  const pdfPath = path.resolve('test_scanned_ocr_temp.pdf');
+  const pyScript = `from reportlab.lib.pagesizes import letter; from reportlab.pdfgen import canvas; c = canvas.Canvas('${pdfPath}', pagesize=letter); c.drawString(100, 750, 'SCAN_P1'); c.drawString(100, 700, 'Hemoglobin: 14.2 g/dL'); c.showPage(); c.drawString(100, 750, 'SCAN_P2'); c.drawString(100, 700, 'Platelets: 250 x10^3/uL'); c.save();`;
+  
+  execSync(`python3 -c "${pyScript}"`);
 
-  console.log('Verified 1-bpp PNG IHDR header:', ihdr);
-  if (ihdr.bitDepth !== 1) {
-    throw new Error(`FAILED: Expected bitDepth 1 for binarized PNG, got ${ihdr.bitDepth}`);
+  if (!fs.existsSync(pdfPath)) {
+    throw new Error('FAILED to generate temporary test PDF');
   }
-  if (ihdr.colorType !== 0) {
-    throw new Error(`FAILED: Expected colorType 0 for binarized PNG, got ${ihdr.colorType}`);
+  console.log('✅ Generated 2-page test PDF for OCR regression testing.');
+
+  try {
+    // 3. Perform document text extraction (falling back to pdftoppm + Tesseract.js)
+    console.log('Running extractDocumentText on 2-page test PDF...');
+    const result = await extractDocumentText(pdfPath, 'application/pdf');
+
+    console.log('Extraction Result rawText snippet:\n', result.rawText);
+
+    if (!result || typeof result.rawText !== 'string') {
+      throw new Error('FAILED: extractDocumentText did not return rawText string');
+    }
+
+    if (result.pageCount !== 2) {
+      throw new Error(`FAILED: Expected pageCount 2, got ${result.pageCount}`);
+    }
+
+    // 4. Verify page ordering and page headers
+    if (!result.rawText.includes('--- PAGE 1 ---') || !result.rawText.includes('--- PAGE 2 ---')) {
+      throw new Error('FAILED: Page markers (--- PAGE 1 ---, --- PAGE 2 ---) missing from extracted text!');
+    }
+
+    const p1Index = result.rawText.indexOf('--- PAGE 1 ---');
+    const p2Index = result.rawText.indexOf('--- PAGE 2 ---');
+
+    if (p1Index >= p2Index) {
+      throw new Error('FAILED: Page markers are out of sequential order!');
+    }
+    console.log('✅ Sequential page order (PAGE 1 -> PAGE 2) verified.');
+
+    // 5. Verify no leftover pdftoppm temporary PNG files exist in directory
+    const dirFiles = fs.readdirSync(path.dirname(pdfPath));
+    const leftoverPngs = dirFiles.filter(f => f.startsWith('pdftoppm_') && f.endsWith('.png'));
+
+    if (leftoverPngs.length > 0) {
+      throw new Error(`FAILED: Temporary PNG files were left behind: ${leftoverPngs.join(', ')}`);
+    }
+    console.log('✅ Temporary PNG files cleanup verified (0 leftover files).');
+
+    // 6. Test native PDF fast path preservation
+    const nativePdfPath = path.resolve('test_native_fastpath.pdf');
+    const pyScriptNative = `from reportlab.lib.pagesizes import letter; from reportlab.pdfgen import canvas; c = canvas.Canvas('${nativePdfPath}', pagesize=letter); c.drawString(100, 750, 'CLINICAL LABORATORY REPORT'); c.drawString(100, 720, 'Patient: John Doe   Age: 45   Gender: Male'); c.drawString(100, 690, 'Hemoglobin: 14.5 g/dL (Reference Range: 13.5 - 17.5 g/dL)'); c.drawString(100, 660, 'White Blood Cell Count: 6.8 x10^3/uL (Reference Range: 4.5 - 11.0 x10^3/uL)'); c.drawString(100, 630, 'Platelet Count: 250 x10^3/uL (Reference Range: 150 - 450 x10^3/uL)'); c.drawString(100, 600, 'Serum Glucose: 95 mg/dL (Reference Range: 70 - 99 mg/dL)'); c.drawString(100, 570, 'Blood Urea Nitrogen: 15 mg/dL (Reference Range: 7 - 20 mg/dL)'); c.drawString(100, 540, 'Serum Creatinine: 0.9 mg/dL (Reference Range: 0.7 - 1.3 mg/dL)'); c.save();`;
+
+    execSync(`python3 -c "${pyScriptNative}"`);
+
+    const nativeResult = await extractDocumentText(nativePdfPath, 'application/pdf');
+
+    if (!nativeResult.rawText.includes('Hemoglobin: 14.5 g/dL')) {
+      throw new Error('FAILED: Native PDF fast path text extraction failed');
+    }
+    console.log('✅ Native PDF fast-path preservation verified.');
+
+    if (fs.existsSync(nativePdfPath)) fs.unlinkSync(nativePdfPath);
+
+    console.log('✅ ALL REGRESSION TESTS PASSED SUCCESSFULLY!');
+  } finally {
+    if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
   }
-  console.log('✅ Target native image verified as genuine 1-bpp monochrome PNG (bitDepth: 1, colorType: 0).');
-
-  // Verify worker count configuration remains 1
-  scribe.opt.workerN = 1;
-  if (scribe.opt.workerN !== 1) {
-    throw new Error('FAILED: scribe.opt.workerN is not 1');
-  }
-  console.log('✅ scribe.opt.workerN = 1 verified.');
-
-  // Verify gs.terminate() lifecycle management
-  await gs.terminate();
-  console.log('✅ Initial gs.terminate() verified.');
-
-  const doc = new scribe.ScribeDoc();
-  doc.inputData.pdfMode = true;
-  doc.images.pageCount = 2;
-  doc.inputData.pageCount = 2;
-  doc.layoutDataTables = {
-    pages: [{ tables: [], default: true }, { tables: [], default: true }]
-  };
-
-  // Initialize pageMetrics for 2 pages
-  doc.pageMetrics = [
-    { dims: { width: 2550, height: 3300 } },
-    { dims: { width: 2550, height: 3300 } }
-  ];
-  doc.images.pdfDims300 = [
-    { width: 2550, height: 3300 },
-    { width: 2550, height: 3300 }
-  ];
-
-  // Pre-fill non-target page 1 with dummy wrappers
-  doc.images.native[1] = Promise.resolve(new ImageWrapper(1, DUMMY_PNG, 'gray'));
-  doc.images.nativeProps[1] = { colorMode: 'gray', rotated: false, upscaled: false, n: 1 };
-  doc.images.binary[1] = Promise.resolve(new ImageWrapper(1, DUMMY_PNG, 'binary'));
-  doc.images.binaryProps[1] = { colorMode: 'binary', rotated: false, upscaled: false, n: 1 };
-
-  // Test memory reference cleanup: original raw Native wrapper wipe and slot replacement
-  const pageIdx = 0;
-  let mockOriginalNative = new ImageWrapper(0, DUMMY_PNG, 'color');
-  doc.images.nativeSrc[pageIdx] = Promise.resolve(mockOriginalNative);
-  doc.images.native[pageIdx] = Promise.resolve(mockOriginalNative);
-
-  // Simulate parser cleanup: wipe original src & imageBitmap, delete old array references
-  mockOriginalNative.src = null;
-  mockOriginalNative.imageBitmap = null;
-  mockOriginalNative = null;
-  if (doc.images.nativeSrc) delete doc.images.nativeSrc[pageIdx];
-  delete doc.images.native[pageIdx];
-
-  // Set target page 0 native image slot to genuine 1-bpp binary wrapper
-  const binaryTargetWrapper = new ImageWrapper(pageIdx, binarizedDataUrl, 'binary', false, false);
-  doc.images.native[pageIdx] = Promise.resolve(binaryTargetWrapper);
-  doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
-
-  // Assert target native slot now holds 1-bpp binary wrapper and not original native image
-  const resolvedTargetNative = await doc.images.native[pageIdx];
-  if (resolvedTargetNative.colorMode !== 'binary' || resolvedTargetNative.src !== binarizedDataUrl) {
-    throw new Error('FAILED: doc.images.native[pageIdx] was not cleanly replaced with 1-bpp binary wrapper!');
-  }
-  if (doc.images.nativeSrc && doc.images.nativeSrc[pageIdx]) {
-    throw new Error('FAILED: doc.images.nativeSrc[pageIdx] reference was not deleted!');
-  }
-  console.log('✅ Memory-reference cleanup verified: original native image wiped and replaced with 1-bpp wrapper.');
-
-  // Pre-fill target page 0 binary image slot to suppress Tesseract binary image generation
-  doc.images.binary[pageIdx] = Promise.resolve(new ImageWrapper(pageIdx, DUMMY_PNG, 'binary'));
-  doc.images.binaryProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
-
-  // Verify target nativeProps colorMode is binary
-  if (doc.images.nativeProps[pageIdx].colorMode !== 'binary') {
-    throw new Error('FAILED: Target nativeProps.colorMode is not binary!');
-  }
-  console.log('✅ Target nativeProps.colorMode = binary verified.');
-
-  // Explicitly set target page angle to 0 so Scribe treats angle as known (disables rotateAuto / upscaling)
-  doc.pageMetrics[pageIdx].angle = 0;
-
-  if (typeof doc.pageMetrics[pageIdx].angle !== 'number' || doc.pageMetrics[pageIdx].angle !== 0) {
-    throw new Error('FAILED: Target page angle was not set to 0');
-  }
-  console.log('✅ Target page angle = 0 verified (disables rotateAuto).');
-
-  // Test 150 DPI scaling logic for Page 0 (target)
-  const origWidth = doc.pageMetrics[pageIdx].dims.width;
-  const origHeight = doc.pageMetrics[pageIdx].dims.height;
-  const scale = 150 / 300;
-
-  doc.pageMetrics[pageIdx].dims.width = Math.round(origWidth * scale);
-  doc.pageMetrics[pageIdx].dims.height = Math.round(origHeight * scale);
-
-  console.log(`Target Page 0 scaled dims: [${doc.pageMetrics[0].dims.width}x${doc.pageMetrics[0].dims.height}]`);
-  console.log(`Non-Target Page 1 dims: [${doc.pageMetrics[1].dims.width}x${doc.pageMetrics[1].dims.height}]`);
-
-  // Assert target page scaled to 150 DPI (2550 * 150 / 300 = 1275, 3300 * 150 / 300 = 1650)
-  if (doc.pageMetrics[0].dims.width !== 1275 || doc.pageMetrics[0].dims.height !== 1650) {
-    throw new Error(`FAILED: Target Page 0 dimensions expected [1275x1650], got [${doc.pageMetrics[0].dims.width}x${doc.pageMetrics[0].dims.height}]`);
-  }
-  // Assert non-target page 1 remains unchanged (2550x3300)
-  if (doc.pageMetrics[1].dims.width !== 2550 || doc.pageMetrics[1].dims.height !== 3300) {
-    throw new Error('FAILED: Non-target Page 1 dimensions were modified!');
-  }
-
-  // Calculate dynamic DPI inside Scribe
-  const targetWidth = doc.pageMetrics[0].dims.width;
-  const computedDpi = Math.round(300 * (targetWidth / doc.images.pdfDims300[0].width));
-  console.log(`Computed Scribe render DPI for Page 0: ${computedDpi} DPI`);
-
-  if (computedDpi !== 150) {
-    throw new Error(`FAILED: Computed render DPI expected 150, got ${computedDpi}`);
-  }
-
-  // Verify non-target page 1 dummy wrappers remain intact
-  const nonTargetNative = await doc.images.native[1];
-  const nonTargetBinary = await doc.images.binary[1];
-  if (nonTargetNative.src !== DUMMY_PNG || nonTargetBinary.src !== DUMMY_PNG) {
-    throw new Error('FAILED: Non-target page dummy wrappers were corrupted!');
-  }
-  console.log('✅ Non-target page 1 dummy wrappers verified intact.');
-
-  // Verify target page binary dummy pre-fill is present
-  const targetBinary = await doc.images.binary[0];
-  if (targetBinary.src !== DUMMY_PNG) {
-    throw new Error('FAILED: Target page 0 binary dummy pre-fill missing!');
-  }
-  console.log('✅ Target page 0 binary dummy pre-fill verified intact.');
-
-  // Restore original dimensions
-  doc.pageMetrics[pageIdx].dims.width = origWidth;
-  doc.pageMetrics[pageIdx].dims.height = origHeight;
-
-  if (doc.pageMetrics[0].dims.width !== 2550 || doc.pageMetrics[0].dims.height !== 3300) {
-    throw new Error('FAILED: Restoration of original dimensions failed!');
-  }
-
-  // Test PDF worker termination & PDF-to-Image mode transition
-  doc.images.pdfData = null;
-  doc.inputData.pdfMode = false;
-  doc.inputData.imageMode = true;
-  doc.images.inputModes.pdf = false;
-  doc.images.inputModes.image = true;
-
-  if (doc.inputData.pdfMode !== false || doc.inputData.imageMode !== true) {
-    throw new Error('FAILED: Document mode flags were not set to imageMode=true, pdfMode=false!');
-  }
-  if (doc.images.inputModes.pdf !== false || doc.images.inputModes.image !== true) {
-    throw new Error('FAILED: doc.images.inputModes flags were not updated consistently!');
-  }
-  if (doc.images.pdfData !== null) {
-    throw new Error('FAILED: doc.images.pdfData was not released to null!');
-  }
-  console.log('✅ PDF mode disabled, Image mode enabled, pdfData=null verified.');
-
-  // Verify doc.recognize() executes in image mode on doc.images.native[0] without requiring pdfScheduler
-  const ocrPagesMask = [true, false];
-  await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: ocrPagesMask });
-
-  const targetNativePostRec = await doc.images.native[0];
-  if (!targetNativePostRec || targetNativePostRec.colorMode !== 'binary' || targetNativePostRec.src !== binarizedDataUrl) {
-    throw new Error('FAILED: 1-bpp ImageWrapper was lost after recognize!');
-  }
-  console.log('✅ doc.recognize() executed successfully in Image mode without PDF scheduler, retaining 1-bpp ImageWrapper.');
-
-  // Verify post-recognition worker pool termination
-  await gs.terminate();
-  console.log('✅ Post-page gs.terminate() verified.');
-
-  console.log('✅ TEST PASSED: Genuine 1-bpp binary target image, nativeProps colorMode=binary, 150 DPI scaling, angle=0, non-target isolation, PDF worker lifecycle termination, and Image-mode recognize verified!');
-  await doc.close();
-  await gs.terminate();
 }
 
-runTest().catch((err) => {
+runRegressionSuite().catch((err) => {
   console.error('❌ REGRESSION TEST FAILED:', err);
   process.exit(1);
 });
-
-

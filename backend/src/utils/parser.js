@@ -1,4 +1,8 @@
 import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import zlib from 'node:zlib';
 import Tesseract from 'tesseract.js';
 import { createRequire } from 'module';
@@ -6,6 +10,8 @@ import scribe from 'scribe.js-ocr';
 import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
 import { gs } from 'scribe.js-ocr/js/generalWorkerMain.js';
 import { getPngIHDRInfo } from 'scribe.js-ocr/js/utils/imageUtils.js';
+
+const execFileAsync = promisify(execFile);
 
 const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
@@ -1322,6 +1328,43 @@ export function extractLabValuesFromText(text) {
 
 export const ocrQueue = new OcrQueue(1);
 
+async function renderPdfPageWithPdftoppm(pdfPath, pageNum, dpi = 150) {
+  const safePrefix = path.join(
+    path.dirname(pdfPath),
+    `pdftoppm_${Date.now()}_${crypto.randomBytes(4).toString('hex')}_p${pageNum}`
+  );
+
+  logger.info(`[OCR-MEM] BEFORE pdftoppm (Page ${pageNum}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+  try {
+    await execFileAsync('/usr/bin/pdftoppm', [
+      '-png',
+      '-r', String(dpi),
+      '-f', String(pageNum),
+      '-l', String(pageNum),
+      pdfPath,
+      safePrefix
+    ]);
+  } catch (err) {
+    logger.error(`[OCR] /usr/bin/pdftoppm execution failed for page ${pageNum} of ${pdfPath}: ${err.message}`);
+    throw new Error(`PDF page rendering failed: /usr/bin/pdftoppm unavailable or failed (${err.message})`);
+  }
+
+  logger.info(`[OCR-MEM] AFTER pdftoppm (Page ${pageNum}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+  const outputDir = path.dirname(safePrefix);
+  const basePrefix = path.basename(safePrefix);
+  const dirFiles = fs.readdirSync(outputDir);
+  const generatedPngName = dirFiles.find(f => f.startsWith(basePrefix) && f.endsWith('.png'));
+
+  if (!generatedPngName) {
+    logger.error(`[OCR] pdftoppm output image file not found for page ${pageNum}`);
+    throw new Error(`pdftoppm output image file not found for page ${pageNum}`);
+  }
+
+  return path.join(outputDir, generatedPngName);
+}
+
 export async function extractDocumentText(filePath, mimeType = '') {
   logger.info(`[OCR] Stage 0: Processing started | [RAM] ${getMemStats()}`);
   logger.info(`[OCR] File: ${filePath}`);
@@ -1331,6 +1374,7 @@ export async function extractDocumentText(filePath, mimeType = '') {
   const isPdf = mimeType === 'application/pdf' || (filePath && filePath.toLowerCase().endsWith('.pdf'));
 
   if (isPdf) {
+    let detectedPageCount = 1;
     try {
       logger.info(`[OCR] Stage 1: PDF file read starting... | [RAM] ${getMemStats()}`);
       const fileBuffer = await fs.promises.readFile(filePath);
@@ -1341,7 +1385,8 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
       logger.info(`[OCR] Stage 3: Native PDF load() starting... | [RAM] ${getMemStats()}`);
       await pdfParser.load();
-      logger.info(`[OCR] Stage 3 complete (pageCount: ${pdfParser.numpages || 'unknown'}) | [RAM] ${getMemStats()}`);
+      detectedPageCount = pdfParser.doc?.numPages || pdfParser.numpages || 1;
+      logger.info(`[OCR] Stage 3 complete (pageCount: ${detectedPageCount}) | [RAM] ${getMemStats()}`);
 
       logger.info(`[OCR] Stage 4: Native getText() starting... | [RAM] ${getMemStats()}`);
       const nativeRaw = await pdfParser.getText();
@@ -1377,227 +1422,87 @@ export async function extractDocumentText(filePath, mimeType = '') {
           const pageCount = pdfParser.numpages || (nativeRaw && Array.isArray(nativeRaw.pages) ? nativeRaw.pages.length : 1);
           return { rawText: formattedText, pageCount };
         } else {
-          logger.info(`[OCR] Stage 8: DECISION -> Native fast-path REJECTED (incomplete/unverified). Falling back to Scribe.js. | [RAM] ${getMemStats()}`);
+          logger.info(`[OCR] Stage 8: DECISION -> Native fast-path REJECTED (incomplete/unverified). Falling back to pdftoppm + Tesseract.js OCR. | [RAM] ${getMemStats()}`);
         }
       } else {
-        logger.info(`[OCR] Stage 8: DECISION -> Native fast-path SKIPPED (text length <= 50). Falling back to Scribe.js. | [RAM] ${getMemStats()}`);
+        logger.info(`[OCR] Stage 8: DECISION -> Native fast-path SKIPPED (text length <= 50). Falling back to pdftoppm + Tesseract.js OCR. | [RAM] ${getMemStats()}`);
       }
     } catch (pdfErr) {
-      logger.warn(`[OCR] Native PDF text extraction attempt warning: ${pdfErr.message}. Falling back to Scribe.js OCR. | [RAM] ${getMemStats()}`);
-    }
-  }
-
-  if (scribe && scribe.opt) {
-    scribe.opt.workerN = 1;
-  }
-  logger.info(`[OCR] Stage 9: Scribe initialization starting (workerN: 1)... | [RAM] ${getMemStats()}`);
-  let doc = null;
-  try {
-    logger.info(`[OCR] Stage 10: Scribe openDocument starting (workerN: 1, pdfWorkerN: 1)... | [RAM] ${getMemStats()}`);
-    doc = await scribe.openDocument([filePath], { pdfWorkerN: 1 });
-    const pageCount = doc.inputData?.pageCount || 1;
-    logger.info(`[OCR] Stage 10 complete (Scribe pageCount: ${pageCount}) | [RAM] ${getMemStats()}`);
-
-    logger.info(`[OCR] Stage 11: Purging pre-warmed general worker pool before sequential OCR... | [RAM] ${getMemStats()}`);
-    logger.info(`[OCR] Stage 11 BEFORE WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-    await gs.terminate();
-    logger.info(`[OCR] Stage 11 AFTER WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
-    logger.info(`[OCR] Stage 12: Scribe sequential single-page recognize starting for ${pageCount} page(s) (mode: speed, target DPI: 150)... | [RAM] ${getMemStats()}`);
-
-    const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-
-    for (let pageIdx = 0; pageIdx < pageCount; pageIdx++) {
-      // Pre-fill non-target page slots with dummy ImageWrapper promises so preRenderRange skips PDF rendering for non-target pages
-      if (doc.images) {
-        for (let i = 0; i < pageCount; i++) {
-          if (i !== pageIdx) {
-            const dummyWrapper = new ImageWrapper(i, DUMMY_PNG, 'gray');
-            doc.images.native[i] = Promise.resolve(dummyWrapper);
-            doc.images.nativeProps[i] = { colorMode: 'gray', rotated: false, upscaled: false, n: i };
-            doc.images.binary[i] = Promise.resolve(new ImageWrapper(i, DUMMY_PNG, 'binary'));
-            doc.images.binaryProps[i] = { colorMode: 'binary', rotated: false, upscaled: false, n: i };
-          } else {
-            delete doc.images.native[i];
-            delete doc.images.nativeProps[i];
-          }
-        }
-      }
-
-      // Pre-fill target page binary image slot with dummy ImageWrapper to suppress Tesseract binary PNG generation
-      if (doc.images) {
-        const dummyBinary = new ImageWrapper(pageIdx, DUMMY_PNG, 'binary');
-        doc.images.binary[pageIdx] = Promise.resolve(dummyBinary);
-        doc.images.binaryProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
-      }
-
-      // Explicitly set target page angle to 0 so Scribe treats angle as known (disables rotateAuto / upscaling)
-      if (doc.pageMetrics && doc.pageMetrics[pageIdx]) {
-        doc.pageMetrics[pageIdx].angle = 0;
-      }
-
-      // Scale ONLY the target page dimensions by (150 / 300) to force Scribe's imageContainer to render the PDF page at 150 DPI
-      let origWidth = 0;
-      let origHeight = 0;
-      if (doc.pageMetrics && doc.pageMetrics[pageIdx] && doc.pageMetrics[pageIdx].dims) {
-        origWidth = doc.pageMetrics[pageIdx].dims.width;
-        origHeight = doc.pageMetrics[pageIdx].dims.height;
-        const scale = 150 / 300;
-        doc.pageMetrics[pageIdx].dims.width = Math.round(origWidth * scale);
-        doc.pageMetrics[pageIdx].dims.height = Math.round(origHeight * scale);
-        logger.info(`[OCR] Target Page ${pageIdx + 1} metrics scaled for 150 DPI: [${origWidth}x${origHeight}] -> [${doc.pageMetrics[pageIdx].dims.width}x${doc.pageMetrics[pageIdx].dims.height}]`);
-      }
-
-      // Render target page directly via pdfScheduler and convert to genuine 1-bpp binary PNG to bypass Leptonica halftone detection & grayscale blur without populating doc.images native cache
-      if (doc.images) {
-        logger.info(`[OCR-MEM] Step 1: BEFORE direct render for targetPageIdx=${pageIdx} | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-        
-        let rawSrc = null;
-        let pdfSource = null;
-        if (doc.inputModes?.pdf) {
-          const pm = doc.pageMetrics[pageIdx];
-          pdfSource = doc.images.resolveSource(pm);
-          const pdfScheduler = await pdfSource.getScheduler();
-          const sourcePageN = pm.sourcePageN ?? pageIdx;
-          const renderResult = await pdfScheduler.renderPdfPage({
-            pageIndex: sourcePageN,
-            colorMode: 'gray',
-            dpi: 150,
-            outputFormat: 'png',
-            textEdits: null
-          }, false);
-          if (renderResult && renderResult.dataUrl) {
-            rawSrc = renderResult.dataUrl;
-          }
-        } else {
-          let rawNativeImg = await doc.images.getNative(pageIdx);
-          if (rawNativeImg && rawNativeImg.ensureSrc) {
-            rawSrc = rawNativeImg.ensureSrc();
-          }
-        }
-
-        logger.info(`[OCR-MEM] Step 2: AFTER page rendering completed | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
-        if (rawSrc && rawSrc.includes(',')) {
-          let rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
-          let binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
-          let binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
-
-          // Step 1 & 2: Assign 1-bpp ImageWrapper and nativeProps
-          const binary1bppWrapper = new ImageWrapper(pageIdx, binaryPngDataUrl, 'binary', false, false);
-          doc.images.native[pageIdx] = Promise.resolve(binary1bppWrapper);
-          doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
-          logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG (${binarized1bppBuffer.length} bytes)`);
-
-          // Clear temporary render/base64/buffer references
-          rawSrc = null;
-          rawPngBuffer = null;
-          binarized1bppBuffer = null;
-          binaryPngDataUrl = null;
-
-          // Step 3: Terminate PDF worker pool
-          logger.info(`[OCR-MEM] Step 3: BEFORE pdfSource.terminate() | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-          if (pdfSource && pdfSource.terminate) {
-            await pdfSource.terminate();
-          }
-          logger.info(`[OCR-MEM] Step 4: AFTER pdfSource.terminate() | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
-          // Step 4: Release main-thread PDF data
-          if (doc.images) {
-            doc.images.pdfData = null;
-          }
-          logger.info(`[OCR-MEM] Step 5: AFTER pdfData=null | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
-          // Step 5: Prevent doc.recognize() from treating this document as PDF mode
-          if (doc.inputData) {
-            doc.inputData.pdfMode = false;
-            doc.inputData.imageMode = true;
-          }
-          if (doc.images?.inputModes) {
-            doc.images.inputModes.pdf = false;
-            doc.images.inputModes.image = true;
-          }
-
-          // Step 6 & 7: Explicit GC
-          if (global.gc) {
-            global.gc();
-          }
-          logger.info(`[OCR-MEM] Step 6: AFTER GC | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-        }
-      }
-
-      const ocrPagesMask = Array(pageCount).fill(false);
-      ocrPagesMask[pageIdx] = true;
-
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} START: Recognizing page ${pageIdx + 1}/${pageCount} at 150 DPI | [RAM] ${getMemStats()}`);
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} BEFORE RECOGNIZE (worker pool recreation if needed) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-      await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: ocrPagesMask });
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} AFTER RECOGNIZE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
-      // Restore original pageMetrics dimensions post-recognize
-      if (origWidth && origHeight && doc.pageMetrics && doc.pageMetrics[pageIdx] && doc.pageMetrics[pageIdx].dims) {
-        doc.pageMetrics[pageIdx].dims.width = origWidth;
-        doc.pageMetrics[pageIdx].dims.height = origHeight;
-      }
-
-      // Immediate release of high-resolution bitmap raster image buffers from heap
-      if (doc.images) {
-        if (Array.isArray(doc.images.native)) doc.images.native.length = 0;
-        if (Array.isArray(doc.images.binary)) doc.images.binary.length = 0;
-        if (Array.isArray(doc.images.nativeSrc)) doc.images.nativeSrc.length = 0;
-        if (Array.isArray(doc.images.nativeProps)) doc.images.nativeProps.length = 0;
-        if (Array.isArray(doc.images.binaryProps)) doc.images.binaryProps.length = 0;
-      }
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} complete (bitmaps released) | [RAM] ${getMemStats()}`);
-
-      // Explicitly terminate Scribe general worker pool to free worker isolate, WASM linear memory, and Tesseract neural network workspace back to OS
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} BEFORE WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-      await gs.terminate();
-      if (global.gc) global.gc();
-      logger.info(`[OCR] Stage 12.${pageIdx + 1} AFTER WORKER TERMINATE | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+      logger.warn(`[OCR] Native PDF text extraction attempt warning: ${pdfErr.message}. Falling back to pdftoppm + Tesseract.js OCR. | [RAM] ${getMemStats()}`);
     }
 
-    logger.info(`[OCR] Stage 12 complete (All ${pageCount} page(s) recognized at 150 DPI) | [RAM] ${getMemStats()}`);
+    // Low-memory scanned PDF OCR fallback using pdftoppm + Tesseract.js
+    logger.info(`[OCR] Stage 9: Low-memory scanned PDF OCR initialization for ${detectedPageCount} page(s) (150 DPI)... | [RAM] ${getMemStats()}`);
+    const ocrPagesText = [];
 
-    logger.info(`[OCR] Stage 13: Scribe text extraction starting... | [RAM] ${getMemStats()}`);
-    let rawText = '';
-    const pages = doc.ocr?.active;
+    for (let pageIdx = 1; pageIdx <= detectedPageCount; pageIdx++) {
+      logger.info(`[OCR] Stage 12.${pageIdx} START: Processing page ${pageIdx}/${detectedPageCount} at 150 DPI... | [RAM] ${getMemStats()}`);
 
-    if (Array.isArray(pages) && pages.length > 0) {
-      const pageBlocks = pages.map((page, index) => {
-        const pageText = (scribe.utils?.ocr?.getPageText(page) || '').trim();
-        return `--- PAGE ${index + 1} ---\n${pageText}`;
-      });
-      rawText = pageBlocks.join('\n\n');
-    } else {
-      const exported = await doc.exportData('txt');
-      rawText = typeof exported === 'string' ? exported : new TextDecoder().decode(exported);
-    }
+      let generatedPngPath = null;
+      let rawPngBuffer = null;
+      let binarizedBuffer = null;
 
-    logger.info(`[OCR] Stage 13 complete (Extracted text length: ${rawText.length}) | [RAM] ${getMemStats()}`);
-    return { rawText, pageCount };
-  } catch (error) {
-    logger.error(`[OCR] Scribe Extraction Error: ${error.message} | [RAM] ${getMemStats()}`);
-    throw error;
-  } finally {
-    logger.info(`[OCR] Stage 14: Scribe cleanup/doc.close() starting... | [RAM] ${getMemStats()}`);
-    if (doc && typeof doc.close === 'function') {
       try {
-        await doc.close();
-        logger.info(`[OCR] Stage 14 complete (Scribe doc.close successful) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-      } catch (closeErr) {
-        logger.warn(`[OCR] Stage 14 Warning closing ScribeDoc: ${closeErr.message} | [RAM] ${getMemStats()}`);
+        // Step a: Invoke /usr/bin/pdftoppm for target page
+        generatedPngPath = await renderPdfPageWithPdftoppm(filePath, pageIdx, 150);
+
+        // Step b & c: Read PNG and convert to 1-bpp monochrome PNG Buffer
+        rawPngBuffer = fs.readFileSync(generatedPngPath);
+        logger.info(`[OCR-MEM] AFTER PNG READ (Page ${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+        binarizedBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
+        logger.info(`[OCR-MEM] AFTER BINARIZATION (Page ${pageIdx}, ${binarizedBuffer.length} bytes) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+        // Step h (early): Delete temporary PNG file immediately after reading
+        if (generatedPngPath && fs.existsSync(generatedPngPath)) {
+          fs.unlinkSync(generatedPngPath);
+          generatedPngPath = null;
+        }
+
+        // Step d, e, f, g: Create Tesseract worker, recognize 1-bpp image, append text, and terminate
+        logger.info(`[OCR-MEM] BEFORE TESSERACT WORKER CREATION (Page ${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+        const worker = await Tesseract.createWorker('eng');
+        try {
+          const { data: { text: pageText } } = await worker.recognize(binarizedBuffer);
+          logger.info(`[OCR-MEM] AFTER RECOGNITION (Page ${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+          ocrPagesText.push(`--- PAGE ${pageIdx} ---\n${(pageText || '').trim()}`);
+        } finally {
+          await worker.terminate();
+          logger.info(`[OCR-MEM] AFTER WORKER TERMINATE (Page ${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+        }
+      } finally {
+        // Step h (guaranteed): Ensure temporary PNG is deleted in finally block
+        if (generatedPngPath && fs.existsSync(generatedPngPath)) {
+          try { fs.unlinkSync(generatedPngPath); } catch (_) {}
+        }
+        // Step i & j: Release page buffers and call global.gc()
+        rawPngBuffer = null;
+        binarizedBuffer = null;
+        if (global.gc) global.gc();
+        logger.info(`[OCR-MEM] AFTER PAGE CLEANUP & GC (Page ${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
       }
-    } else {
-      logger.info(`[OCR] Stage 14 complete (No active Scribe doc to close) | [RAM] ${getMemStats()}`);
     }
+
+    const rawText = ocrPagesText.join('\n\n');
+    logger.info(`[OCR] Low-memory scanned PDF OCR complete (Total text length: ${rawText.length}) | [RAM] ${getMemStats()}`);
+    return { rawText, pageCount: detectedPageCount };
+  } else {
+    // Non-PDF Image processing (PNG / JPG)
+    logger.info(`[OCR] Processing image file natively with Tesseract.js... | [RAM] ${getMemStats()}`);
+    const rawImageBuffer = await fs.promises.readFile(filePath);
+    const binarizedImg = binarizePngTo1bpp(rawImageBuffer, 180);
+    const worker = await Tesseract.createWorker('eng');
+    let pageText = '';
     try {
-      await gs.terminate();
+      const { data } = await worker.recognize(binarizedImg);
+      pageText = data.text || '';
+    } finally {
+      await worker.terminate();
       if (global.gc) global.gc();
-      logger.info(`[OCR] Stage 14: Final gs.terminate() complete | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-    } catch (gsErr) {
-      logger.warn(`[OCR] Stage 14 Warning terminating generalWorker: ${gsErr.message} | [RAM] ${getMemStats()}`);
     }
+    const rawText = `--- PAGE 1 ---\n${pageText.trim()}`;
+    return { rawText, pageCount: 1 };
   }
 }
 
