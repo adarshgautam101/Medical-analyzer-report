@@ -1,9 +1,158 @@
 import fs from 'fs';
+import zlib from 'node:zlib';
 import Tesseract from 'tesseract.js';
 import { createRequire } from 'module';
 import scribe from 'scribe.js-ocr';
 import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
 import { gs } from 'scribe.js-ocr/js/generalWorkerMain.js';
+import { getPngIHDRInfo } from 'scribe.js-ocr/js/utils/imageUtils.js';
+
+const crcTable = new Uint32Array(256);
+for (let n = 0; n < 256; n++) {
+  let c = n;
+  for (let k = 0; k < 8; k++) {
+    c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+  }
+  crcTable[n] = c;
+}
+
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ ~0) >>> 0;
+}
+
+function createPngChunk(type, data) {
+  const len = data.length;
+  const buf = Buffer.alloc(8 + len + 4);
+  buf.writeUInt32BE(len, 0);
+  buf.write(type, 4, 4, 'ascii');
+  data.copy(buf, 8);
+  const crc = crc32(buf.subarray(4, 8 + len));
+  buf.writeUInt32BE(crc, 8 + len);
+  return buf;
+}
+
+function decodePngToPixels(pngBuffer) {
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = 0;
+  const idatChunks = [];
+
+  while (offset < pngBuffer.length) {
+    const length = pngBuffer.readUInt32BE(offset);
+    const type = pngBuffer.toString('ascii', offset + 4, offset + 8);
+    if (type === 'IHDR') {
+      width = pngBuffer.readUInt32BE(offset + 8);
+      height = pngBuffer.readUInt32BE(offset + 12);
+      colorType = pngBuffer[offset + 17];
+    } else if (type === 'IDAT') {
+      idatChunks.push(pngBuffer.subarray(offset + 8, offset + 8 + length));
+    }
+    offset += 12 + length;
+  }
+
+  const compressedData = Buffer.concat(idatChunks);
+  const decompressed = zlib.inflateSync(compressedData);
+
+  let bpp = 1;
+  if (colorType === 0) bpp = 1;
+  else if (colorType === 2) bpp = 3;
+  else if (colorType === 3) bpp = 1;
+  else if (colorType === 6) bpp = 4;
+
+  const pixels = Buffer.alloc(width * height);
+  let prevRow = Buffer.alloc(width * bpp);
+  let rawOffset = 0;
+
+  for (let y = 0; y < height; y++) {
+    const filterType = decompressed[rawOffset++];
+    const currRow = Buffer.alloc(width * bpp);
+
+    for (let i = 0; i < width * bpp; i++) {
+      const x = decompressed[rawOffset++];
+      const a = i >= bpp ? currRow[i - bpp] : 0;
+      const b = prevRow[i];
+      const c = i >= bpp ? prevRow[i - bpp] : 0;
+
+      let val = x;
+      if (filterType === 1) val = (x + a) & 0xff;
+      else if (filterType === 2) val = (x + b) & 0xff;
+      else if (filterType === 3) val = (x + Math.floor((a + b) / 2)) & 0xff;
+      else if (filterType === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a);
+        const pb = Math.abs(p - b);
+        const pc = Math.abs(p - c);
+        let pr = c;
+        if (pa <= pb && pa <= pc) pr = a;
+        else if (pb <= pc) pr = b;
+        val = (x + pr) & 0xff;
+      }
+      currRow[i] = val;
+    }
+    prevRow = currRow;
+
+    for (let x = 0; x < width; x++) {
+      let gray = 255;
+      if (colorType === 6) {
+        gray = Math.round(0.299 * currRow[x * 4] + 0.587 * currRow[x * 4 + 1] + 0.114 * currRow[x * 4 + 2]);
+      } else if (colorType === 2) {
+        gray = Math.round(0.299 * currRow[x * 3] + 0.587 * currRow[x * 3 + 1] + 0.114 * currRow[x * 3 + 2]);
+      } else if (colorType === 0) {
+        gray = currRow[x];
+      }
+      pixels[y * width + x] = gray;
+    }
+  }
+
+  return { width, height, pixels };
+}
+
+function create1bppPngBuffer(width, height, getPixelVal) {
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData[8] = 1;
+  ihdrData[9] = 0;
+  ihdrData[10] = 0;
+  ihdrData[11] = 0;
+  ihdrData[12] = 0;
+  const ihdr = createPngChunk('IHDR', ihdrData);
+
+  const rowBytes = Math.ceil(width / 8);
+  const scanlines = Buffer.alloc(height * (1 + rowBytes));
+
+  let offset = 0;
+  for (let y = 0; y < height; y++) {
+    scanlines[offset++] = 0;
+    for (let x = 0; x < width; x += 8) {
+      let byteVal = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        if (x + bit < width) {
+          const bitVal = getPixelVal(x + bit, y) ? 1 : 0;
+          byteVal |= (bitVal << (7 - bit));
+        }
+      }
+      scanlines[offset++] = byteVal;
+    }
+  }
+
+  const compressedData = zlib.deflateSync(scanlines, { level: 9 });
+  const idat = createPngChunk('IDAT', compressedData);
+  const iend = createPngChunk('IEND', Buffer.alloc(0));
+
+  return Buffer.concat([sig, ihdr, idat, iend]);
+}
+
+export function binarizePngTo1bpp(pngBuffer, threshold = 180) {
+  const { width, height, pixels } = decodePngToPixels(pngBuffer);
+  return create1bppPngBuffer(width, height, (x, y) => pixels[y * width + x] > threshold);
+}
 import { Report, LabValue, ReportCategory, UniversalRange } from '../models/index.js';
 import { inferReportName } from './analytics.js';
 import { logger } from './logger.js';
@@ -1297,6 +1446,27 @@ export async function extractDocumentText(filePath, mimeType = '') {
         doc.pageMetrics[pageIdx].dims.width = Math.round(origWidth * scale);
         doc.pageMetrics[pageIdx].dims.height = Math.round(origHeight * scale);
         logger.info(`[OCR] Target Page ${pageIdx + 1} metrics scaled for 150 DPI: [${origWidth}x${origHeight}] -> [${doc.pageMetrics[pageIdx].dims.width}x${doc.pageMetrics[pageIdx].dims.height}]`);
+      }
+
+      // Render target page and convert native image to genuine 1-bpp binary PNG to bypass Leptonica halftone detection & grayscale blur
+      if (doc.images) {
+        const rawNativeImg = await doc.images.getNative(pageIdx);
+        if (rawNativeImg && rawNativeImg.ensureSrc) {
+          const rawSrc = rawNativeImg.ensureSrc();
+          if (rawSrc && rawSrc.includes(',')) {
+            const rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
+            const binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
+            const binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
+
+            const binary1bppWrapper = new ImageWrapper(pageIdx, binaryPngDataUrl, 'binary', false, false);
+            doc.images.native[pageIdx] = Promise.resolve(binary1bppWrapper);
+            doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
+
+            logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG`);
+            logger.info(`[OCR] Binary PNG size: ${binarized1bppBuffer.length} bytes`);
+            logger.info(`[OCR] RSS before recognize: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+          }
+        }
       }
 
       const ocrPagesMask = Array(pageCount).fill(false);

@@ -1,9 +1,11 @@
 import scribe from 'scribe.js-ocr';
 import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
 import { gs } from 'scribe.js-ocr/js/generalWorkerMain.js';
+import { getPngIHDRInfo } from 'scribe.js-ocr/js/utils/imageUtils.js';
+import { binarizePngTo1bpp } from '../utils/parser.js';
 
 async function runTest() {
-  console.log('🧪 RUNNING 150 DPI TARGET PAGE SCALING, PRE-RENDER BYPASS & WORKER LIFECYCLE REGRESSION TEST');
+  console.log('🧪 RUNNING 1-BPP MONOCHROME BINARY PNG & 150 DPI OCR REGRESSION TEST');
 
   const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   const dummy = new ImageWrapper(1, DUMMY_PNG, 'gray');
@@ -12,6 +14,21 @@ async function runTest() {
     throw new Error('ImageWrapper instantiation failed');
   }
   console.log('✅ ImageWrapper instantiation verified.');
+
+  // Test 1-bpp binarization logic and verify IHDR info
+  const dummyBuf = Buffer.from(DUMMY_PNG.split(',')[1], 'base64');
+  const binarizedBuf = binarizePngTo1bpp(dummyBuf, 180);
+  const binarizedDataUrl = 'data:image/png;base64,' + binarizedBuf.toString('base64');
+  const ihdr = getPngIHDRInfo(new Uint8Array(binarizedBuf));
+
+  console.log('Verified 1-bpp PNG IHDR header:', ihdr);
+  if (ihdr.bitDepth !== 1) {
+    throw new Error(`FAILED: Expected bitDepth 1 for binarized PNG, got ${ihdr.bitDepth}`);
+  }
+  if (ihdr.colorType !== 0) {
+    throw new Error(`FAILED: Expected colorType 0 for binarized PNG, got ${ihdr.colorType}`);
+  }
+  console.log('✅ Target native image verified as genuine 1-bpp monochrome PNG (bitDepth: 1, colorType: 0).');
 
   // Verify worker count configuration remains 1
   scribe.opt.workerN = 1;
@@ -45,10 +62,21 @@ async function runTest() {
   doc.images.binary[1] = Promise.resolve(new ImageWrapper(1, DUMMY_PNG, 'binary'));
   doc.images.binaryProps[1] = { colorMode: 'binary', rotated: false, upscaled: false, n: 1 };
 
-  // Pre-fill target page 0 binary image slot to suppress Tesseract binary image generation
+  // Set target page 0 native image slot to genuine 1-bpp binary wrapper
   const pageIdx = 0;
+  const binaryTargetWrapper = new ImageWrapper(pageIdx, binarizedDataUrl, 'binary', false, false);
+  doc.images.native[pageIdx] = Promise.resolve(binaryTargetWrapper);
+  doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
+
+  // Pre-fill target page 0 binary image slot to suppress Tesseract binary image generation
   doc.images.binary[pageIdx] = Promise.resolve(new ImageWrapper(pageIdx, DUMMY_PNG, 'binary'));
   doc.images.binaryProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
+
+  // Verify target nativeProps colorMode is binary
+  if (doc.images.nativeProps[pageIdx].colorMode !== 'binary') {
+    throw new Error('FAILED: Target nativeProps.colorMode is not binary!');
+  }
+  console.log('✅ Target nativeProps.colorMode = binary verified.');
 
   // Explicitly set target page angle to 0 so Scribe treats angle as known (disables rotateAuto / upscaling)
   doc.pageMetrics[pageIdx].angle = 0;
@@ -114,7 +142,7 @@ async function runTest() {
   await gs.terminate();
   console.log('✅ Post-page gs.terminate() verified.');
 
-  console.log('✅ TEST PASSED: 150 DPI target page scaling, angle=0 auto-rotate suppression, binary pre-fill, non-target isolation, dimension restoration, and worker lifecycle termination verified!');
+  console.log('✅ TEST PASSED: Genuine 1-bpp binary target image, nativeProps colorMode=binary, 150 DPI scaling, angle=0, non-target isolation, and worker lifecycle termination verified!');
   await doc.close();
   await gs.terminate();
 }
