@@ -1249,9 +1249,25 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
     logger.info(`[OCR] Stage 11: Scribe pre-render / configuration check... | [RAM] ${getMemStats()}`);
 
-    logger.info(`[OCR] Stage 12: Scribe recognize() starting (mode: speed, ocrPages: auto)... | [RAM] ${getMemStats()}`);
-    await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: 'auto' });
-    logger.info(`[OCR] Stage 12 complete (Scribe recognize finished) | [RAM] ${getMemStats()}`);
+    logger.info(`[OCR] Stage 12: Scribe sequential single-page recognize starting for ${pageCount} page(s) (mode: speed)... | [RAM] ${getMemStats()}`);
+
+    for (let pageIdx = 0; pageIdx < pageCount; pageIdx++) {
+      const ocrPagesMask = Array(pageCount).fill(false);
+      ocrPagesMask[pageIdx] = true;
+
+      logger.info(`[OCR] Stage 12.${pageIdx + 1}: Recognizing page ${pageIdx + 1}/${pageCount} | [RAM] ${getMemStats()}`);
+      await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: ocrPagesMask });
+
+      // Immediate release of high-resolution bitmap raster image buffers from heap
+      if (doc.images) {
+        if (Array.isArray(doc.images.native)) doc.images.native.length = 0;
+        if (Array.isArray(doc.images.binary)) doc.images.binary.length = 0;
+        if (Array.isArray(doc.images.nativeSrc)) doc.images.nativeSrc.length = 0;
+      }
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} complete (bitmaps released) | [RAM] ${getMemStats()}`);
+    }
+
+    logger.info(`[OCR] Stage 12 complete (All ${pageCount} page(s) recognized) | [RAM] ${getMemStats()}`);
 
     logger.info(`[OCR] Stage 13: Scribe text extraction starting... | [RAM] ${getMemStats()}`);
     let rawText = '';
