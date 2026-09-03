@@ -1212,8 +1212,8 @@ export async function extractDocumentText(filePath, mimeType = '') {
   logger.info(`[OCR] Stage 9: Scribe initialization starting... | [RAM] ${getMemStats()}`);
   let doc = null;
   try {
-    logger.info(`[OCR] Stage 10: Scribe openDocument starting... | [RAM] ${getMemStats()}`);
-    doc = await scribe.openDocument([filePath]);
+    logger.info(`[OCR] Stage 10: Scribe openDocument starting (pdfWorkerN: 1)... | [RAM] ${getMemStats()}`);
+    doc = await scribe.openDocument([filePath], { pdfWorkerN: 1 });
     const pageCount = doc.inputData?.pageCount || 1;
     logger.info(`[OCR] Stage 10 complete (Scribe pageCount: ${pageCount}) | [RAM] ${getMemStats()}`);
 
