@@ -1137,10 +1137,15 @@ export class OcrQueue {
   }
 }
 
+function getMemStats() {
+  const mem = process.memoryUsage();
+  return `heapUsed: ${(mem.heapUsed / 1024 / 1024).toFixed(2)} MB, rss: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`;
+}
+
 export const ocrQueue = new OcrQueue(1);
 
 export async function extractDocumentText(filePath, mimeType = '') {
-  logger.info(`[OCR] Processing started`);
+  logger.info(`[OCR] Stage 0: Processing started | [RAM] ${getMemStats()}`);
   logger.info(`[OCR] File: ${filePath}`);
   logger.info(`[OCR] MIME type: ${mimeType || 'unknown'}`);
   logger.info(`[OCR] Extraction method: Scribe.js (scribe.js-ocr) with verified native fast-path`);
@@ -1149,10 +1154,22 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
   if (isPdf) {
     try {
+      logger.info(`[OCR] Stage 1: PDF file read starting... | [RAM] ${getMemStats()}`);
       const fileBuffer = await fs.promises.readFile(filePath);
+      logger.info(`[OCR] Stage 1 complete (buffer size: ${fileBuffer.length} bytes) | [RAM] ${getMemStats()}`);
+
+      logger.info(`[OCR] Stage 2: Native PDFParse construction... | [RAM] ${getMemStats()}`);
       const pdfParser = new PDFParse({ data: fileBuffer });
+
+      logger.info(`[OCR] Stage 3: Native PDF load() starting... | [RAM] ${getMemStats()}`);
       await pdfParser.load();
+      logger.info(`[OCR] Stage 3 complete (pageCount: ${pdfParser.numpages || 'unknown'}) | [RAM] ${getMemStats()}`);
+
+      logger.info(`[OCR] Stage 4: Native getText() starting... | [RAM] ${getMemStats()}`);
       const nativeRaw = await pdfParser.getText();
+      logger.info(`[OCR] Stage 4 complete (nativeRaw type: ${typeof nativeRaw}) | [RAM] ${getMemStats()}`);
+
+      logger.info(`[OCR] Stage 5: Native text normalization... | [RAM] ${getMemStats()}`);
       let rawString = '';
       if (typeof nativeRaw === 'string') {
         rawString = nativeRaw;
@@ -1161,14 +1178,20 @@ export async function extractDocumentText(filePath, mimeType = '') {
       }
 
       const nativeText = rawString.trim();
+      logger.info(`[OCR] Stage 5 complete (nativeText raw length: ${nativeText.length}) | [RAM] ${getMemStats()}`);
 
       if (nativeText && nativeText.length > 50) {
+        logger.info(`[OCR] Stage 6: Native validation starting... | [RAM] ${getMemStats()}`);
         const validation = validateExtractedText(nativeText);
+        logger.info(`[OCR] Stage 6 complete (valid: ${validation.valid}) | [RAM] ${getMemStats()}`);
+
+        logger.info(`[OCR] Stage 7: Native medical/lab completeness verification... | [RAM] ${getMemStats()}`);
         const medicalCheck = isMedicalDocument(validation.cleanedText || nativeText);
         const labValues = extractLabValues(validation.cleanedText || nativeText);
+        logger.info(`[OCR] Stage 7 complete (isMedical: ${medicalCheck.isMedical}, labValues: ${labValues.length}) | [RAM] ${getMemStats()}`);
 
         if (validation.valid && medicalCheck.isMedical && (labValues.length > 0 || (validation.cleanedText && validation.cleanedText.length > 150))) {
-          logger.info(`[OCR] Native PDF text extraction verified complete (length: ${nativeText.length}). Fast-path used.`);
+          logger.info(`[OCR] Stage 8: DECISION -> Native fast-path ACCEPTED (length: ${nativeText.length}). Skipping Scribe.js. | [RAM] ${getMemStats()}`);
           let formattedText = nativeText;
           if (!formattedText.includes('--- PAGE')) {
             formattedText = `--- PAGE 1 ---\n${formattedText}`;
@@ -1176,22 +1199,31 @@ export async function extractDocumentText(filePath, mimeType = '') {
           const pageCount = pdfParser.numpages || (nativeRaw && Array.isArray(nativeRaw.pages) ? nativeRaw.pages.length : 1);
           return { rawText: formattedText, pageCount };
         } else {
-          logger.info(`[OCR] Native PDF text extraction incomplete or unverified. Falling back to Scribe.js OCR.`);
+          logger.info(`[OCR] Stage 8: DECISION -> Native fast-path REJECTED (incomplete/unverified). Falling back to Scribe.js. | [RAM] ${getMemStats()}`);
         }
+      } else {
+        logger.info(`[OCR] Stage 8: DECISION -> Native fast-path SKIPPED (text length <= 50). Falling back to Scribe.js. | [RAM] ${getMemStats()}`);
       }
     } catch (pdfErr) {
-      logger.warn(`[OCR] Native PDF text extraction attempt warning: ${pdfErr.message}. Falling back to Scribe.js OCR.`);
+      logger.warn(`[OCR] Native PDF text extraction attempt warning: ${pdfErr.message}. Falling back to Scribe.js OCR. | [RAM] ${getMemStats()}`);
     }
   }
 
+  logger.info(`[OCR] Stage 9: Scribe initialization starting... | [RAM] ${getMemStats()}`);
   let doc = null;
   try {
+    logger.info(`[OCR] Stage 10: Scribe openDocument starting... | [RAM] ${getMemStats()}`);
     doc = await scribe.openDocument([filePath]);
     const pageCount = doc.inputData?.pageCount || 1;
-    logger.info(`[OCR] Document opened in Scribe.js. Page count: ${pageCount}`);
+    logger.info(`[OCR] Stage 10 complete (Scribe pageCount: ${pageCount}) | [RAM] ${getMemStats()}`);
 
+    logger.info(`[OCR] Stage 11: Scribe pre-render / configuration check... | [RAM] ${getMemStats()}`);
+
+    logger.info(`[OCR] Stage 12: Scribe recognize() starting (mode: speed, ocrPages: auto)... | [RAM] ${getMemStats()}`);
     await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: 'auto' });
+    logger.info(`[OCR] Stage 12 complete (Scribe recognize finished) | [RAM] ${getMemStats()}`);
 
+    logger.info(`[OCR] Stage 13: Scribe text extraction starting... | [RAM] ${getMemStats()}`);
     let rawText = '';
     const pages = doc.ocr?.active;
 
@@ -1206,18 +1238,22 @@ export async function extractDocumentText(filePath, mimeType = '') {
       rawText = typeof exported === 'string' ? exported : new TextDecoder().decode(exported);
     }
 
-    logger.info(`[OCR] Extracted text length: ${rawText.length}`);
+    logger.info(`[OCR] Stage 13 complete (Extracted text length: ${rawText.length}) | [RAM] ${getMemStats()}`);
     return { rawText, pageCount };
   } catch (error) {
-    logger.error(`[OCR] Extraction error: ${error.message}`);
+    logger.error(`[OCR] Scribe Extraction Error: ${error.message} | [RAM] ${getMemStats()}`);
     throw error;
   } finally {
+    logger.info(`[OCR] Stage 14: Scribe cleanup/doc.close() starting... | [RAM] ${getMemStats()}`);
     if (doc && typeof doc.close === 'function') {
       try {
         await doc.close();
+        logger.info(`[OCR] Stage 14 complete (Scribe doc.close successful) | [RAM] ${getMemStats()}`);
       } catch (closeErr) {
-        logger.warn(`[OCR] Warning closing ScribeDoc: ${closeErr.message}`);
+        logger.warn(`[OCR] Stage 14 Warning closing ScribeDoc: ${closeErr.message} | [RAM] ${getMemStats()}`);
       }
+    } else {
+      logger.info(`[OCR] Stage 14 complete (No active Scribe doc to close) | [RAM] ${getMemStats()}`);
     }
   }
 }
