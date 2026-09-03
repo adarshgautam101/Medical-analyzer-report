@@ -2,6 +2,7 @@ import fs from 'fs';
 import Tesseract from 'tesseract.js';
 import { createRequire } from 'module';
 import scribe from 'scribe.js-ocr';
+import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
 import { Report, LabValue, ReportCategory, UniversalRange } from '../models/index.js';
 import { inferReportName } from './analytics.js';
 import { logger } from './logger.js';
@@ -1251,7 +1252,23 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
     logger.info(`[OCR] Stage 12: Scribe sequential single-page recognize starting for ${pageCount} page(s) (mode: speed)... | [RAM] ${getMemStats()}`);
 
+    const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
     for (let pageIdx = 0; pageIdx < pageCount; pageIdx++) {
+      // Pre-fill non-target page slots with dummy ImageWrapper promises so preRenderRange skips PDF rendering for non-target pages
+      if (doc.images) {
+        for (let i = 0; i < pageCount; i++) {
+          if (i !== pageIdx) {
+            const dummyWrapper = new ImageWrapper(i, DUMMY_PNG, 'gray');
+            doc.images.native[i] = Promise.resolve(dummyWrapper);
+            doc.images.nativeProps[i] = { colorMode: 'gray', rotated: false, upscaled: false, n: i };
+          } else {
+            delete doc.images.native[i];
+            delete doc.images.nativeProps[i];
+          }
+        }
+      }
+
       const ocrPagesMask = Array(pageCount).fill(false);
       ocrPagesMask[pageIdx] = true;
 
