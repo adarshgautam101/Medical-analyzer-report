@@ -45,6 +45,9 @@ async function runTest() {
   doc.inputData.pdfMode = true;
   doc.images.pageCount = 2;
   doc.inputData.pageCount = 2;
+  doc.layoutDataTables = {
+    pages: [{ tables: [], default: true }, { tables: [], default: true }]
+  };
 
   // Initialize pageMetrics for 2 pages
   doc.pageMetrics = [
@@ -160,11 +163,39 @@ async function runTest() {
     throw new Error('FAILED: Restoration of original dimensions failed!');
   }
 
+  // Test PDF worker termination & PDF-to-Image mode transition
+  doc.images.pdfData = null;
+  doc.inputData.pdfMode = false;
+  doc.inputData.imageMode = true;
+  doc.images.inputModes.pdf = false;
+  doc.images.inputModes.image = true;
+
+  if (doc.inputData.pdfMode !== false || doc.inputData.imageMode !== true) {
+    throw new Error('FAILED: Document mode flags were not set to imageMode=true, pdfMode=false!');
+  }
+  if (doc.images.inputModes.pdf !== false || doc.images.inputModes.image !== true) {
+    throw new Error('FAILED: doc.images.inputModes flags were not updated consistently!');
+  }
+  if (doc.images.pdfData !== null) {
+    throw new Error('FAILED: doc.images.pdfData was not released to null!');
+  }
+  console.log('✅ PDF mode disabled, Image mode enabled, pdfData=null verified.');
+
+  // Verify doc.recognize() executes in image mode on doc.images.native[0] without requiring pdfScheduler
+  const ocrPagesMask = [true, false];
+  await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: ocrPagesMask });
+
+  const targetNativePostRec = await doc.images.native[0];
+  if (!targetNativePostRec || targetNativePostRec.colorMode !== 'binary' || targetNativePostRec.src !== binarizedDataUrl) {
+    throw new Error('FAILED: 1-bpp ImageWrapper was lost after recognize!');
+  }
+  console.log('✅ doc.recognize() executed successfully in Image mode without PDF scheduler, retaining 1-bpp ImageWrapper.');
+
   // Verify post-recognition worker pool termination
   await gs.terminate();
   console.log('✅ Post-page gs.terminate() verified.');
 
-  console.log('✅ TEST PASSED: Genuine 1-bpp binary target image, nativeProps colorMode=binary, 150 DPI scaling, angle=0, non-target isolation, and worker lifecycle termination verified!');
+  console.log('✅ TEST PASSED: Genuine 1-bpp binary target image, nativeProps colorMode=binary, 150 DPI scaling, angle=0, non-target isolation, PDF worker lifecycle termination, and Image-mode recognize verified!');
   await doc.close();
   await gs.terminate();
 }
@@ -173,4 +204,5 @@ runTest().catch((err) => {
   console.error('❌ REGRESSION TEST FAILED:', err);
   process.exit(1);
 });
+
 

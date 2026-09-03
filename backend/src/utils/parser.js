@@ -1479,37 +1479,50 @@ export async function extractDocumentText(filePath, mimeType = '') {
         logger.info(`[OCR-MEM] Step 2: AFTER page rendering completed | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
         if (rawSrc && rawSrc.includes(',')) {
-          logger.info(`[OCR-MEM] Step 3: Extracted rawSrc base64 string (${(rawSrc.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
           let rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
-          logger.info(`[OCR-MEM] Step 4: Created rawPngBuffer (${(rawPngBuffer.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
           let binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
-          logger.info(`[OCR-MEM] Step 5: Binarized to 1-bpp PNG Buffer (${(binarized1bppBuffer.length / 1024).toFixed(2)} KB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
           let binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
 
-          // Release rawSrc and rawPngBuffer
-          rawSrc = null;
-          rawPngBuffer = null;
-
-          // Suspend PDF worker source to terminate PDF worker pool & release streamBytesCache and decodedImageCache
-          if (pdfSource && pdfSource.suspend) {
-            await pdfSource.suspend();
-          }
-
-          if (global.gc) {
-            global.gc();
-          }
-          logger.info(`[OCR-MEM] Step 6: AFTER pdfSource.suspend() + GC | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
+          // Step 1 & 2: Assign 1-bpp ImageWrapper and nativeProps
           const binary1bppWrapper = new ImageWrapper(pageIdx, binaryPngDataUrl, 'binary', false, false);
           doc.images.native[pageIdx] = Promise.resolve(binary1bppWrapper);
           doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
+          logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG (${binarized1bppBuffer.length} bytes)`);
 
-          logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG`);
-          logger.info(`[OCR] Binary PNG size: ${binarized1bppBuffer.length} bytes`);
-          logger.info(`[OCR-MEM] Step 7: AFTER assigning 1-bpp ImageWrapper to doc.images.native[${pageIdx}] | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+          // Clear temporary render/base64/buffer references
+          rawSrc = null;
+          rawPngBuffer = null;
+          binarized1bppBuffer = null;
+          binaryPngDataUrl = null;
+
+          // Step 3: Terminate PDF worker pool
+          logger.info(`[OCR-MEM] Step 3: BEFORE pdfSource.terminate() | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+          if (pdfSource && pdfSource.terminate) {
+            await pdfSource.terminate();
+          }
+          logger.info(`[OCR-MEM] Step 4: AFTER pdfSource.terminate() | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+          // Step 4: Release main-thread PDF data
+          if (doc.images) {
+            doc.images.pdfData = null;
+          }
+          logger.info(`[OCR-MEM] Step 5: AFTER pdfData=null | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+          // Step 5: Prevent doc.recognize() from treating this document as PDF mode
+          if (doc.inputData) {
+            doc.inputData.pdfMode = false;
+            doc.inputData.imageMode = true;
+          }
+          if (doc.images?.inputModes) {
+            doc.images.inputModes.pdf = false;
+            doc.images.inputModes.image = true;
+          }
+
+          // Step 6 & 7: Explicit GC
+          if (global.gc) {
+            global.gc();
+          }
+          logger.info(`[OCR-MEM] Step 6: AFTER GC | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
         }
       }
 
