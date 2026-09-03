@@ -8,6 +8,11 @@ import { logger } from './logger.js';
 import { env } from '../config/env.js';
 import { HfInference } from '@huggingface/inference';
 
+// Configure process-wide Scribe.js options to limit General Worker pool to 1 thread on Render Free (512 MB RAM)
+if (scribe && scribe.opt) {
+  scribe.opt.workerN = 1;
+}
+
 const require = createRequire(import.meta.url);
 const { PDFParse } = require('pdf-parse');
 
@@ -1231,10 +1236,13 @@ export async function extractDocumentText(filePath, mimeType = '') {
     }
   }
 
-  logger.info(`[OCR] Stage 9: Scribe initialization starting... | [RAM] ${getMemStats()}`);
+  if (scribe && scribe.opt) {
+    scribe.opt.workerN = 1;
+  }
+  logger.info(`[OCR] Stage 9: Scribe initialization starting (workerN: 1)... | [RAM] ${getMemStats()}`);
   let doc = null;
   try {
-    logger.info(`[OCR] Stage 10: Scribe openDocument starting (pdfWorkerN: 1)... | [RAM] ${getMemStats()}`);
+    logger.info(`[OCR] Stage 10: Scribe openDocument starting (workerN: 1, pdfWorkerN: 1)... | [RAM] ${getMemStats()}`);
     doc = await scribe.openDocument([filePath], { pdfWorkerN: 1 });
     const pageCount = doc.inputData?.pageCount || 1;
     logger.info(`[OCR] Stage 10 complete (Scribe pageCount: ${pageCount}) | [RAM] ${getMemStats()}`);
