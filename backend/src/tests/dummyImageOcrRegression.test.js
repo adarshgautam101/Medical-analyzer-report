@@ -2,7 +2,7 @@ import scribe from 'scribe.js-ocr';
 import { ImageWrapper } from 'scribe.js-ocr/js/objects/imageObjects.js';
 
 async function runTest() {
-  console.log('🧪 RUNNING 220 DPI TARGET PAGE SCALING & PRE-RENDER BYPASS REGRESSION TEST');
+  console.log('🧪 RUNNING 150 DPI TARGET PAGE SCALING & PRE-RENDER BYPASS REGRESSION TEST');
 
   const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   const dummy = new ImageWrapper(1, DUMMY_PNG, 'gray');
@@ -53,10 +53,10 @@ async function runTest() {
   }
   console.log('✅ Target page angle = 0 verified (disables rotateAuto).');
 
-  // Test 220 DPI scaling logic for Page 0 (target)
+  // Test 150 DPI scaling logic for Page 0 (target)
   const origWidth = doc.pageMetrics[pageIdx].dims.width;
   const origHeight = doc.pageMetrics[pageIdx].dims.height;
-  const scale = 220 / 300;
+  const scale = 150 / 300;
 
   doc.pageMetrics[pageIdx].dims.width = Math.round(origWidth * scale);
   doc.pageMetrics[pageIdx].dims.height = Math.round(origHeight * scale);
@@ -64,9 +64,9 @@ async function runTest() {
   console.log(`Target Page 0 scaled dims: [${doc.pageMetrics[0].dims.width}x${doc.pageMetrics[0].dims.height}]`);
   console.log(`Non-Target Page 1 dims: [${doc.pageMetrics[1].dims.width}x${doc.pageMetrics[1].dims.height}]`);
 
-  // Assert target page scaled to 220 DPI (2550 * 220 / 300 = 1870)
-  if (doc.pageMetrics[0].dims.width !== 1870 || doc.pageMetrics[0].dims.height !== 2420) {
-    throw new Error(`FAILED: Target Page 0 dimensions expected [1870x2420], got [${doc.pageMetrics[0].dims.width}x${doc.pageMetrics[0].dims.height}]`);
+  // Assert target page scaled to 150 DPI (2550 * 150 / 300 = 1275, 3300 * 150 / 300 = 1650)
+  if (doc.pageMetrics[0].dims.width !== 1275 || doc.pageMetrics[0].dims.height !== 1650) {
+    throw new Error(`FAILED: Target Page 0 dimensions expected [1275x1650], got [${doc.pageMetrics[0].dims.width}x${doc.pageMetrics[0].dims.height}]`);
   }
   // Assert non-target page 1 remains unchanged (2550x3300)
   if (doc.pageMetrics[1].dims.width !== 2550 || doc.pageMetrics[1].dims.height !== 3300) {
@@ -78,8 +78,8 @@ async function runTest() {
   const computedDpi = Math.round(300 * (targetWidth / doc.images.pdfDims300[0].width));
   console.log(`Computed Scribe render DPI for Page 0: ${computedDpi} DPI`);
 
-  if (computedDpi !== 220) {
-    throw new Error(`FAILED: Computed render DPI expected 220, got ${computedDpi}`);
+  if (computedDpi !== 150) {
+    throw new Error(`FAILED: Computed render DPI expected 150, got ${computedDpi}`);
   }
 
   // Verify non-target page 1 dummy wrappers remain intact
@@ -105,7 +105,7 @@ async function runTest() {
     throw new Error('FAILED: Restoration of original dimensions failed!');
   }
 
-  console.log('✅ TEST PASSED: 220 DPI target page scaling, angle=0 auto-rotate suppression, binary pre-fill, non-target isolation, and dimension restoration verified!');
+  console.log('✅ TEST PASSED: 150 DPI target page scaling, angle=0 auto-rotate suppression, binary pre-fill, non-target isolation, and dimension restoration verified!');
   await doc.close();
 }
 
