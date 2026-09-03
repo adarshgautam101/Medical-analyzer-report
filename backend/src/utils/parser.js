@@ -1142,6 +1142,28 @@ function getMemStats() {
   return `heapUsed: ${(mem.heapUsed / 1024 / 1024).toFixed(2)} MB, rss: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`;
 }
 
+export function extractLabValuesFromText(text) {
+  if (!text) return [];
+  const lines = text.split('\n');
+  const extractedLabValues = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/---\s*PAGE\s*(\d+)\s*---/i.test(line)) continue;
+    const prevLine = i > 0 ? lines[i - 1] : '';
+    try {
+      const parsed = parseParameterLine(line, text, prevLine);
+      if (!parsed) continue;
+      const canonicalName = parsed.parameterName;
+      if (!extractedLabValues.some((item) => item.parameterName.toLowerCase() === canonicalName.toLowerCase())) {
+        extractedLabValues.push(parsed);
+      }
+    } catch (e) {
+      // Ignore single line parsing error
+    }
+  }
+  return extractedLabValues;
+}
+
 export const ocrQueue = new OcrQueue(1);
 
 export async function extractDocumentText(filePath, mimeType = '') {
@@ -1187,7 +1209,7 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
         logger.info(`[OCR] Stage 7: Native medical/lab completeness verification... | [RAM] ${getMemStats()}`);
         const medicalCheck = isMedicalDocument(validation.cleanedText || nativeText);
-        const labValues = extractLabValues(validation.cleanedText || nativeText);
+        const labValues = extractLabValuesFromText(validation.cleanedText || nativeText);
         logger.info(`[OCR] Stage 7 complete (isMedical: ${medicalCheck.isMedical}, labValues: ${labValues.length}) | [RAM] ${getMemStats()}`);
 
         if (validation.valid && medicalCheck.isMedical && (labValues.length > 0 || (validation.cleanedText && validation.cleanedText.length > 150))) {
