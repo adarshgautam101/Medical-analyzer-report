@@ -1448,52 +1448,68 @@ export async function extractDocumentText(filePath, mimeType = '') {
         logger.info(`[OCR] Target Page ${pageIdx + 1} metrics scaled for 150 DPI: [${origWidth}x${origHeight}] -> [${doc.pageMetrics[pageIdx].dims.width}x${doc.pageMetrics[pageIdx].dims.height}]`);
       }
 
-      // Render target page and convert native image to genuine 1-bpp binary PNG to bypass Leptonica halftone detection & grayscale blur
+      // Render target page directly via pdfScheduler and convert to genuine 1-bpp binary PNG to bypass Leptonica halftone detection & grayscale blur without populating doc.images native cache
       if (doc.images) {
-        logger.info(`[OCR-MEM] Step 1: BEFORE getNative(targetPageIdx=${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-        let rawNativeImg = await doc.images.getNative(pageIdx);
-        logger.info(`[OCR-MEM] Step 2: AFTER getNative(targetPageIdx=${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+        logger.info(`[OCR-MEM] Step 1: BEFORE direct render for targetPageIdx=${pageIdx} | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+        
+        let rawSrc = null;
+        let pdfSource = null;
+        if (doc.inputModes?.pdf) {
+          const pm = doc.pageMetrics[pageIdx];
+          pdfSource = doc.images.resolveSource(pm);
+          const pdfScheduler = await pdfSource.getScheduler();
+          const sourcePageN = pm.sourcePageN ?? pageIdx;
+          const renderResult = await pdfScheduler.renderPdfPage({
+            pageIndex: sourcePageN,
+            colorMode: 'gray',
+            dpi: 150,
+            outputFormat: 'png',
+            textEdits: null
+          }, false);
+          if (renderResult && renderResult.dataUrl) {
+            rawSrc = renderResult.dataUrl;
+          }
+        } else {
+          let rawNativeImg = await doc.images.getNative(pageIdx);
+          if (rawNativeImg && rawNativeImg.ensureSrc) {
+            rawSrc = rawNativeImg.ensureSrc();
+          }
+        }
 
-        if (rawNativeImg && rawNativeImg.ensureSrc) {
-          let rawSrc = rawNativeImg.ensureSrc();
+        logger.info(`[OCR-MEM] Step 2: AFTER page rendering completed | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+        if (rawSrc && rawSrc.includes(',')) {
           logger.info(`[OCR-MEM] Step 3: Extracted rawSrc base64 string (${(rawSrc.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
-          if (rawSrc && rawSrc.includes(',')) {
-            let rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
-            logger.info(`[OCR-MEM] Step 4: Created rawPngBuffer (${(rawPngBuffer.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+          let rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
+          logger.info(`[OCR-MEM] Step 4: Created rawPngBuffer (${(rawPngBuffer.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
-            let binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
-            logger.info(`[OCR-MEM] Step 5: Binarized to 1-bpp PNG Buffer (${(binarized1bppBuffer.length / 1024).toFixed(2)} KB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+          let binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
+          logger.info(`[OCR-MEM] Step 5: Binarized to 1-bpp PNG Buffer (${(binarized1bppBuffer.length / 1024).toFixed(2)} KB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
-            let binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
+          let binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
 
-            // Explicitly release original rawNativeImg, rawSrc, rawPngBuffer, and doc.images array references
-            if (rawNativeImg) {
-              rawNativeImg.src = null;
-              rawNativeImg.imageBitmap = null;
-              rawNativeImg = null;
-            }
-            if (doc.images.nativeSrc) {
-              delete doc.images.nativeSrc[pageIdx];
-            }
-            delete doc.images.native[pageIdx];
+          // Release rawSrc and rawPngBuffer
+          rawSrc = null;
+          rawPngBuffer = null;
 
-            rawSrc = null;
-            rawPngBuffer = null;
-
-            if (global.gc) {
-              global.gc();
-            }
-            logger.info(`[OCR-MEM] Step 6: AFTER releasing original image & intermediate buffers + GC | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
-
-            const binary1bppWrapper = new ImageWrapper(pageIdx, binaryPngDataUrl, 'binary', false, false);
-            doc.images.native[pageIdx] = Promise.resolve(binary1bppWrapper);
-            doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
-
-            logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG`);
-            logger.info(`[OCR] Binary PNG size: ${binarized1bppBuffer.length} bytes`);
-            logger.info(`[OCR-MEM] Step 7: AFTER assigning 1-bpp ImageWrapper to doc.images.native[${pageIdx}] | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+          // Suspend PDF worker source to terminate PDF worker pool & release streamBytesCache and decodedImageCache
+          if (pdfSource && pdfSource.suspend) {
+            await pdfSource.suspend();
           }
+
+          if (global.gc) {
+            global.gc();
+          }
+          logger.info(`[OCR-MEM] Step 6: AFTER pdfSource.suspend() + GC | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+          const binary1bppWrapper = new ImageWrapper(pageIdx, binaryPngDataUrl, 'binary', false, false);
+          doc.images.native[pageIdx] = Promise.resolve(binary1bppWrapper);
+          doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
+
+          logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG`);
+          logger.info(`[OCR] Binary PNG size: ${binarized1bppBuffer.length} bytes`);
+          logger.info(`[OCR-MEM] Step 7: AFTER assigning 1-bpp ImageWrapper to doc.images.native[${pageIdx}] | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
         }
       }
 
