@@ -33,6 +33,8 @@ import logsRouter from './routes/logs.js';
 
 
 const app = express();
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 
 const allowedOrigins = env.CORS_ORIGIN
@@ -42,6 +44,8 @@ const allowedOrigins = env.CORS_ORIGIN
 const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 };
 
 const io = new SocketIOServer(httpServer, {
@@ -58,6 +62,7 @@ await fs.promises.mkdir(uploadDir, { recursive: true });
 
 app.use(helmet());
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(requestLogger);
 
