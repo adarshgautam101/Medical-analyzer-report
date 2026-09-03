@@ -62,11 +62,33 @@ async function runTest() {
   doc.images.binary[1] = Promise.resolve(new ImageWrapper(1, DUMMY_PNG, 'binary'));
   doc.images.binaryProps[1] = { colorMode: 'binary', rotated: false, upscaled: false, n: 1 };
 
-  // Set target page 0 native image slot to genuine 1-bpp binary wrapper
+  // Test memory reference cleanup: original raw Native wrapper wipe and slot replacement
   const pageIdx = 0;
+  let mockOriginalNative = new ImageWrapper(0, DUMMY_PNG, 'color');
+  doc.images.nativeSrc[pageIdx] = Promise.resolve(mockOriginalNative);
+  doc.images.native[pageIdx] = Promise.resolve(mockOriginalNative);
+
+  // Simulate parser cleanup: wipe original src & imageBitmap, delete old array references
+  mockOriginalNative.src = null;
+  mockOriginalNative.imageBitmap = null;
+  mockOriginalNative = null;
+  if (doc.images.nativeSrc) delete doc.images.nativeSrc[pageIdx];
+  delete doc.images.native[pageIdx];
+
+  // Set target page 0 native image slot to genuine 1-bpp binary wrapper
   const binaryTargetWrapper = new ImageWrapper(pageIdx, binarizedDataUrl, 'binary', false, false);
   doc.images.native[pageIdx] = Promise.resolve(binaryTargetWrapper);
   doc.images.nativeProps[pageIdx] = { colorMode: 'binary', rotated: false, upscaled: false, n: pageIdx };
+
+  // Assert target native slot now holds 1-bpp binary wrapper and not original native image
+  const resolvedTargetNative = await doc.images.native[pageIdx];
+  if (resolvedTargetNative.colorMode !== 'binary' || resolvedTargetNative.src !== binarizedDataUrl) {
+    throw new Error('FAILED: doc.images.native[pageIdx] was not cleanly replaced with 1-bpp binary wrapper!');
+  }
+  if (doc.images.nativeSrc && doc.images.nativeSrc[pageIdx]) {
+    throw new Error('FAILED: doc.images.nativeSrc[pageIdx] reference was not deleted!');
+  }
+  console.log('✅ Memory-reference cleanup verified: original native image wiped and replaced with 1-bpp wrapper.');
 
   // Pre-fill target page 0 binary image slot to suppress Tesseract binary image generation
   doc.images.binary[pageIdx] = Promise.resolve(new ImageWrapper(pageIdx, DUMMY_PNG, 'binary'));

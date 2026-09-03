@@ -1450,13 +1450,41 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
       // Render target page and convert native image to genuine 1-bpp binary PNG to bypass Leptonica halftone detection & grayscale blur
       if (doc.images) {
-        const rawNativeImg = await doc.images.getNative(pageIdx);
+        logger.info(`[OCR-MEM] Step 1: BEFORE getNative(targetPageIdx=${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+        let rawNativeImg = await doc.images.getNative(pageIdx);
+        logger.info(`[OCR-MEM] Step 2: AFTER getNative(targetPageIdx=${pageIdx}) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
         if (rawNativeImg && rawNativeImg.ensureSrc) {
-          const rawSrc = rawNativeImg.ensureSrc();
+          let rawSrc = rawNativeImg.ensureSrc();
+          logger.info(`[OCR-MEM] Step 3: Extracted rawSrc base64 string (${(rawSrc.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
           if (rawSrc && rawSrc.includes(',')) {
-            const rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
-            const binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
-            const binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
+            let rawPngBuffer = Buffer.from(rawSrc.slice(rawSrc.indexOf(',') + 1), 'base64');
+            logger.info(`[OCR-MEM] Step 4: Created rawPngBuffer (${(rawPngBuffer.length / 1024 / 1024).toFixed(2)} MB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+            let binarized1bppBuffer = binarizePngTo1bpp(rawPngBuffer, 180);
+            logger.info(`[OCR-MEM] Step 5: Binarized to 1-bpp PNG Buffer (${(binarized1bppBuffer.length / 1024).toFixed(2)} KB) | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+
+            let binaryPngDataUrl = 'data:image/png;base64,' + binarized1bppBuffer.toString('base64');
+
+            // Explicitly release original rawNativeImg, rawSrc, rawPngBuffer, and doc.images array references
+            if (rawNativeImg) {
+              rawNativeImg.src = null;
+              rawNativeImg.imageBitmap = null;
+              rawNativeImg = null;
+            }
+            if (doc.images.nativeSrc) {
+              delete doc.images.nativeSrc[pageIdx];
+            }
+            delete doc.images.native[pageIdx];
+
+            rawSrc = null;
+            rawPngBuffer = null;
+
+            if (global.gc) {
+              global.gc();
+            }
+            logger.info(`[OCR-MEM] Step 6: AFTER releasing original image & intermediate buffers + GC | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
 
             const binary1bppWrapper = new ImageWrapper(pageIdx, binaryPngDataUrl, 'binary', false, false);
             doc.images.native[pageIdx] = Promise.resolve(binary1bppWrapper);
@@ -1464,7 +1492,7 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
             logger.info(`[OCR] Target native image prepared as 1-bpp binary PNG`);
             logger.info(`[OCR] Binary PNG size: ${binarized1bppBuffer.length} bytes`);
-            logger.info(`[OCR] RSS before recognize: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
+            logger.info(`[OCR-MEM] Step 7: AFTER assigning 1-bpp ImageWrapper to doc.images.native[${pageIdx}] | [RAM] rss: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`);
           }
         }
       }
