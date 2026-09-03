@@ -45,7 +45,7 @@ const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Requested-Id', 'x-requested-id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Requested-Id', 'x-requested-id', 'X-Request-Id', 'x-request-id'],
 };
 
 const io = new SocketIOServer(httpServer, {
