@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { Report, LabValue, PatientDoctorAccess } from '../models/index.js';
-import { processReportInBackground, extractDocumentText, validateExtractedText, isMedicalDocument } from '../utils/parser.js';
+import { processReportInBackground, extractDocumentText, validateExtractedText, isMedicalDocument, ocrQueue } from '../utils/parser.js';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors/AppError.js';
 import { logger } from '../utils/logger.js';
 
@@ -29,7 +29,7 @@ export const uploadReport = async (user, file) => {
   let extractedText = '';
   let ocrError = null;
   try {
-    const ocrRes = await extractDocumentText(file.path, file.mimetype);
+    const ocrRes = await ocrQueue.enqueue(() => extractDocumentText(file.path, file.mimetype));
     const rawText = ocrRes?.rawText || '';
     const validation = validateExtractedText(rawText);
     if (validation.valid) {

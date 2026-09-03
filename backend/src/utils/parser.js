@@ -1143,15 +1143,46 @@ export async function extractDocumentText(filePath, mimeType = '') {
   logger.info(`[OCR] Processing started`);
   logger.info(`[OCR] File: ${filePath}`);
   logger.info(`[OCR] MIME type: ${mimeType || 'unknown'}`);
-  logger.info(`[OCR] Extraction method: Scribe.js (scribe.js-ocr)`);
+  logger.info(`[OCR] Extraction method: Scribe.js (scribe.js-ocr) with verified native fast-path`);
+
+  const isPdf = mimeType === 'application/pdf' || (filePath && filePath.toLowerCase().endsWith('.pdf'));
+
+  if (isPdf) {
+    try {
+      const fileBuffer = await fs.promises.readFile(filePath);
+      const pdfParser = new PDFParse({ data: fileBuffer });
+      await pdfParser.load();
+      const nativeRaw = await pdfParser.getText();
+      const nativeText = (nativeRaw || '').trim();
+
+      if (nativeText && nativeText.length > 50) {
+        const validation = validateExtractedText(nativeText);
+        const medicalCheck = isMedicalDocument(validation.cleanedText || nativeText);
+        const labValues = extractLabValues(validation.cleanedText || nativeText);
+
+        if (validation.valid && medicalCheck.isMedical && (labValues.length > 0 || (validation.cleanedText && validation.cleanedText.length > 150))) {
+          logger.info(`[OCR] Native PDF text extraction verified complete (length: ${nativeText.length}). Fast-path used.`);
+          let formattedText = nativeText;
+          if (!formattedText.includes('--- PAGE')) {
+            formattedText = `--- PAGE 1 ---\n${formattedText}`;
+          }
+          return { rawText: formattedText, pageCount: pdfParser.numpages || 1 };
+        } else {
+          logger.info(`[OCR] Native PDF text extraction incomplete or unverified. Falling back to Scribe.js OCR.`);
+        }
+      }
+    } catch (pdfErr) {
+      logger.warn(`[OCR] Native PDF text extraction attempt warning: ${pdfErr.message}. Falling back to Scribe.js OCR.`);
+    }
+  }
 
   let doc = null;
   try {
     doc = await scribe.openDocument([filePath]);
     const pageCount = doc.inputData?.pageCount || 1;
-    logger.info(`[OCR] Document opened. Page count: ${pageCount}`);
+    logger.info(`[OCR] Document opened in Scribe.js. Page count: ${pageCount}`);
 
-    await doc.recognize({ langs: ['eng'], mode: 'quality' });
+    await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: 'auto' });
 
     let rawText = '';
     const pages = doc.ocr?.active;
