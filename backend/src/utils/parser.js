@@ -1250,7 +1250,7 @@ export async function extractDocumentText(filePath, mimeType = '') {
 
     logger.info(`[OCR] Stage 11: Scribe pre-render / configuration check... | [RAM] ${getMemStats()}`);
 
-    logger.info(`[OCR] Stage 12: Scribe sequential single-page recognize starting for ${pageCount} page(s) (mode: speed)... | [RAM] ${getMemStats()}`);
+    logger.info(`[OCR] Stage 12: Scribe sequential single-page recognize starting for ${pageCount} page(s) (mode: speed, target DPI: 200)... | [RAM] ${getMemStats()}`);
 
     const DUMMY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -1269,11 +1269,30 @@ export async function extractDocumentText(filePath, mimeType = '') {
         }
       }
 
+      // Scale ONLY the target page dimensions by (200 / 300) to force Scribe's imageContainer to render the PDF page at 200 DPI
+      let origWidth = 0;
+      let origHeight = 0;
+      if (doc.pageMetrics && doc.pageMetrics[pageIdx] && doc.pageMetrics[pageIdx].dims) {
+        origWidth = doc.pageMetrics[pageIdx].dims.width;
+        origHeight = doc.pageMetrics[pageIdx].dims.height;
+        const scale = 200 / 300;
+        doc.pageMetrics[pageIdx].dims.width = Math.round(origWidth * scale);
+        doc.pageMetrics[pageIdx].dims.height = Math.round(origHeight * scale);
+        logger.info(`[OCR] Target Page ${pageIdx + 1} metrics scaled for 200 DPI: [${origWidth}x${origHeight}] -> [${doc.pageMetrics[pageIdx].dims.width}x${doc.pageMetrics[pageIdx].dims.height}]`);
+      }
+
       const ocrPagesMask = Array(pageCount).fill(false);
       ocrPagesMask[pageIdx] = true;
 
-      logger.info(`[OCR] Stage 12.${pageIdx + 1}: Recognizing page ${pageIdx + 1}/${pageCount} | [RAM] ${getMemStats()}`);
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} START: Recognizing page ${pageIdx + 1}/${pageCount} at 200 DPI | [RAM] ${getMemStats()}`);
       await doc.recognize({ langs: ['eng'], mode: 'speed', ocrPages: ocrPagesMask });
+      logger.info(`[OCR] Stage 12.${pageIdx + 1} RECOGNIZE DONE | [RAM] ${getMemStats()}`);
+
+      // Restore original pageMetrics dimensions post-recognize
+      if (origWidth && origHeight && doc.pageMetrics && doc.pageMetrics[pageIdx] && doc.pageMetrics[pageIdx].dims) {
+        doc.pageMetrics[pageIdx].dims.width = origWidth;
+        doc.pageMetrics[pageIdx].dims.height = origHeight;
+      }
 
       // Immediate release of high-resolution bitmap raster image buffers from heap
       if (doc.images) {
@@ -1284,7 +1303,7 @@ export async function extractDocumentText(filePath, mimeType = '') {
       logger.info(`[OCR] Stage 12.${pageIdx + 1} complete (bitmaps released) | [RAM] ${getMemStats()}`);
     }
 
-    logger.info(`[OCR] Stage 12 complete (All ${pageCount} page(s) recognized) | [RAM] ${getMemStats()}`);
+    logger.info(`[OCR] Stage 12 complete (All ${pageCount} page(s) recognized at 200 DPI) | [RAM] ${getMemStats()}`);
 
     logger.info(`[OCR] Stage 13: Scribe text extraction starting... | [RAM] ${getMemStats()}`);
     let rawText = '';
