@@ -1153,7 +1153,14 @@ export async function extractDocumentText(filePath, mimeType = '') {
       const pdfParser = new PDFParse({ data: fileBuffer });
       await pdfParser.load();
       const nativeRaw = await pdfParser.getText();
-      const nativeText = (nativeRaw || '').trim();
+      let rawString = '';
+      if (typeof nativeRaw === 'string') {
+        rawString = nativeRaw;
+      } else if (nativeRaw && typeof nativeRaw.text === 'string') {
+        rawString = nativeRaw.text;
+      }
+
+      const nativeText = rawString.trim();
 
       if (nativeText && nativeText.length > 50) {
         const validation = validateExtractedText(nativeText);
@@ -1166,7 +1173,8 @@ export async function extractDocumentText(filePath, mimeType = '') {
           if (!formattedText.includes('--- PAGE')) {
             formattedText = `--- PAGE 1 ---\n${formattedText}`;
           }
-          return { rawText: formattedText, pageCount: pdfParser.numpages || 1 };
+          const pageCount = pdfParser.numpages || (nativeRaw && Array.isArray(nativeRaw.pages) ? nativeRaw.pages.length : 1);
+          return { rawText: formattedText, pageCount };
         } else {
           logger.info(`[OCR] Native PDF text extraction incomplete or unverified. Falling back to Scribe.js OCR.`);
         }
