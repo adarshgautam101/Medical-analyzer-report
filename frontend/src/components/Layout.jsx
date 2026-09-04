@@ -72,13 +72,6 @@ export default function Layout() {
 
             {/* Right User Info & Logout (Desktop + Mobile Toggle) */}
             <div className="flex items-center space-x-3 shrink-0">
-              <div className="hidden sm:flex items-center space-x-1.5 text-sm text-gray-700">
-                <User className="w-4 h-4 text-gray-500 shrink-0" />
-                <span className="max-w-[140px] lg:max-w-[190px] truncate font-medium text-gray-800" title={user?.full_name || user?.email}>
-                  {user?.full_name || user?.email || 'User'}
-                </span>
-                <span className="text-xs text-gray-400 capitalize">({user?.role || 'user'})</span>
-              </div>
               <button
                 onClick={handleLogout}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors shrink-0"
@@ -109,15 +102,6 @@ export default function Layout() {
         {/* Mobile Collapsible Navigation Menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 bg-white px-4 pt-2 pb-4 space-y-1 shadow-lg">
-            {/* Mobile User Info */}
-            <div className="flex sm:hidden items-center px-3 py-2 text-sm text-gray-700 border-b border-gray-100 mb-2">
-              <User className="w-4 h-4 mr-2 text-gray-500 shrink-0" />
-              <span className="font-medium text-gray-800 truncate" title={user?.full_name || user?.email}>
-                {user?.full_name || user?.email || 'User'}
-              </span>
-              <span className="text-xs text-gray-400 ml-1 capitalize">({user?.role || 'user'})</span>
-            </div>
-
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.path
