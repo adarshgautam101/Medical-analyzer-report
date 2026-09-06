@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
-import { Search, User, Stethoscope, Loader, HeartHandshake, Eye, X, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, User, Stethoscope, Loader, HeartHandshake, Eye, X, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
 
 const PAGE_SIZE = 8
 
 export default function FindDoctors() {
+  const navigate = useNavigate()
   const [doctors, setDoctors] = useState([])
   const [categories, setCategories] = useState([])
   const [specialties, setSpecialties] = useState([])
-  const [accessMap, setAccessMap] = useState({}) 
+  const [accessMap, setAccessMap] = useState({})
   const [doctorAccessList, setDoctorAccessList] = useState([])
   const [name, setName] = useState('')
   const [categoryId, setCategoryId] = useState('')
@@ -21,7 +23,7 @@ export default function FindDoctors() {
   const [actionBusy, setActionBusy] = useState({})
   const [page, setPage] = useState(1)
 
-  
+
   const [viewDoctor, setViewDoctor] = useState(null)
   const [viewLoading, setViewLoading] = useState(false)
 
@@ -30,10 +32,10 @@ export default function FindDoctors() {
       const res = await api.get('/api/patient/doctor-access')
       setDoctorAccessList(res.data || [])
       const map = {}
-      ;(res.data || []).forEach((a) => {
-        const status = a.status === 'accepted' ? 'approved' : a.status
-        map[a.doctor_id] = status
-      })
+        ; (res.data || []).forEach((a) => {
+          const status = a.status === 'accepted' ? 'approved' : a.status
+          map[a.doctor_id] = status
+        })
       setAccessMap(map)
     } catch (e) {
       console.error('Failed to load doctor access list:', e)
@@ -166,7 +168,7 @@ export default function FindDoctors() {
     )
   }
 
-  
+
   const totalPages = Math.ceil(doctors.length / PAGE_SIZE)
   const paginatedDoctors = doctors.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -199,7 +201,7 @@ export default function FindDoctors() {
         Manage active doctor permissions or search for new doctors on the platform.
       </p>
 
-      
+
       <div className="bg-white rounded-xl shadow-md p-6 mb-8">
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
           Doctor Access Management
@@ -220,10 +222,10 @@ export default function FindDoctors() {
                 status === 'approved'
                   ? 'bg-green-100 text-green-800'
                   : status === 'pending'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : status === 'revoked'
-                  ? 'bg-red-100 text-red-800'
-                  : 'bg-gray-100 text-gray-700'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : status === 'revoked'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-gray-100 text-gray-700'
 
               return (
                 <div
@@ -243,6 +245,22 @@ export default function FindDoctors() {
                   </div>
 
                   <div className="flex gap-2">
+                    {status === 'approved' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/chat?userId=${row.doctor_id}`, {
+                            state: { userId: row.doctor_id, userName: row.doctor_name },
+                          })
+                        }
+                        className="inline-flex items-center text-sm px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                        title="Message doctor"
+                      >
+                        <MessageCircle className="w-4 h-4 mr-1" />
+                        Message
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => openDoctorInfo(row.doctor_id)}
@@ -412,7 +430,7 @@ export default function FindDoctors() {
             )}
           </div>
 
-          
+
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-3 mt-6">
               <button
@@ -439,7 +457,7 @@ export default function FindDoctors() {
         </>
       )}
 
-      
+
       {(viewDoctor || viewLoading) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 relative">

@@ -57,7 +57,7 @@ export const getChatHistory = async (user, otherUserId) => {
     ],
   }).sort({ createdAt: 1 });
 
-  
+
   await Message.updateMany(
     { sender: otherUserId, receiver: user.id, isRead: false },
     { isRead: true }
@@ -74,7 +74,7 @@ export const getChatHistory = async (user, otherUserId) => {
 };
 
 export const getConversations = async (user) => {
-  
+
   const sentTo = await Message.distinct('receiver', { sender: user.id });
   const receivedFrom = await Message.distinct('sender', { receiver: user.id });
 
@@ -82,7 +82,7 @@ export const getConversations = async (user) => {
 
   const conversations = [];
   for (const otherId of uniqueUserIds) {
-    
+
     const connected = await isConnected(user.id, otherId);
     if (!connected) continue;
 
@@ -103,16 +103,16 @@ export const getConversations = async (user) => {
       user_id: otherId,
       last_message: lastMessage
         ? {
-            message_text: lastMessage.messageText,
-            created_at: lastMessage.createdAt.toISOString(),
-            is_mine: lastMessage.sender.toString() === user.id,
-          }
+          message_text: lastMessage.messageText,
+          created_at: lastMessage.createdAt.toISOString(),
+          is_mine: lastMessage.sender.toString() === user.id,
+        }
         : null,
       unread_count: unreadCount,
     });
   }
 
-  
+
   conversations.sort((a, b) => {
     const aTime = a.last_message ? new Date(a.last_message.created_at) : new Date(0);
     const bTime = b.last_message ? new Date(b.last_message.created_at) : new Date(0);
@@ -120,4 +120,25 @@ export const getConversations = async (user) => {
   });
 
   return conversations;
+};
+
+export const deleteConversation = async (user, otherUserId) => {
+  if (!otherUserId) {
+    throw new BadRequestError('user_id is required');
+  }
+
+  const result = await Message.deleteMany({
+    $or: [
+      { sender: user.id, receiver: otherUserId },
+      { sender: otherUserId, receiver: user.id },
+    ],
+  });
+
+  logger.info(`Conversation deleted between user=${user.id} and otherUser=${otherUserId}. Deleted count: ${result.deletedCount}`);
+
+  return {
+    success: true,
+    message: 'Conversation deleted successfully',
+    deletedCount: result.deletedCount,
+  };
 };

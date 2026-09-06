@@ -14,3 +14,8 @@ export const getConversations = async (req, res) => {
   const result = await chatService.getConversations(req.user);
   return res.json(result);
 };
+
+export const deleteConversation = async (req, res) => {
+  const result = await chatService.deleteConversation(req.user, req.params.user_id);
+  return res.json(result);
+};

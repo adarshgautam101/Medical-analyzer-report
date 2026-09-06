@@ -4,7 +4,7 @@ import api from '../utils/api'
 import { useAuth } from '../contexts/AuthContext'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
-import { User, Save, Search, ArrowLeft, AlertTriangle, StickyNote, Pencil, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { User, Save, Search, ArrowLeft, AlertTriangle, StickyNote, Pencil, ChevronLeft, ChevronRight, X, MessageCircle } from 'lucide-react'
 
 const PAGE_SIZE = 10
 
@@ -27,8 +27,8 @@ export default function DoctorInterface() {
   const [page, setPage] = useState(1)
   const [pendingRequests, setPendingRequests] = useState([])
 
-  
-  const [editingMed, setEditingMed] = useState(null) 
+
+  const [editingMed, setEditingMed] = useState(null)
   const [medForm, setMedForm] = useState({})
   const [medSaving, setMedSaving] = useState(false)
 
@@ -87,7 +87,7 @@ export default function DoctorInterface() {
   const fetchPatientData = useCallback(async () => {
     if (!selectedPatient || user?.role !== 'doctor') return
 
-    
+
     if (!/^[0-9a-fA-F]{24}$/.test(selectedPatient)) {
       setAccessError(`Invalid patient ID format: "${selectedPatient}". Please go back and select a valid patient.`)
       setPatientData(null)
@@ -117,7 +117,7 @@ export default function DoctorInterface() {
       } else {
         setAccessError(
           error.response?.data?.detail ||
-            'Unable to load patient details.'
+          'Unable to load patient details.'
         )
       }
       setPatientData(null)
@@ -178,7 +178,7 @@ export default function DoctorInterface() {
     navigate(`/doctor/patient/${patientId}`)
   }
 
-  
+
   const startEditMed = (med) => {
     setEditingMed(med)
     setMedForm({
@@ -212,7 +212,7 @@ export default function DoctorInterface() {
       p.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  
+
   const totalPages = Math.ceil(filteredPatients.length / PAGE_SIZE)
   const paginatedPatients = filteredPatients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -300,7 +300,7 @@ export default function DoctorInterface() {
             </div>
           )}
 
-          
+
           <div className="bg-white rounded-lg shadow-md mb-6">
             <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold text-gray-900">Doctor Notes</h2>
@@ -388,7 +388,7 @@ export default function DoctorInterface() {
             </div>
           </div>
 
-          
+
           <div className="bg-white rounded-lg shadow-md mb-6">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900">Medical Reports</h2>
@@ -419,7 +419,7 @@ export default function DoctorInterface() {
             </div>
           </div>
 
-          
+
           {patientData.medicines && patientData.medicines.length > 0 && (
             <div className="bg-white rounded-lg shadow-md mb-6">
               <div className="px-6 py-4 border-b border-gray-200">
@@ -603,35 +603,59 @@ export default function DoctorInterface() {
               </div>
             ) : (
               paginatedPatients.map((patient) => (
-                <button
-                  type="button"
+                <div
                   key={patient.id}
-                  onClick={() => handlePatientSelect(patient.id)}
-                  className="w-full px-6 py-4 text-left hover:bg-blue-50 transition-colors"
+                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-blue-50 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <User className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {patient.full_name || patient.email}
+                  <button
+                    type="button"
+                    onClick={() => handlePatientSelect(patient.id)}
+                    className="flex items-center space-x-3 text-left flex-1 min-w-0"
+                  >
+                    <User className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {patient.full_name || patient.email}
+                      </p>
+                      <p className="text-sm text-gray-500 truncate">{patient.email}</p>
+                      {patient.age && (
+                        <p className="text-xs text-gray-400 mt-1 truncate">
+                          {patient.age} years • {patient.gender} • {patient.blood_group}
                         </p>
-                        <p className="text-sm text-gray-500">{patient.email}</p>
-                        {patient.age && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            {patient.age} years • {patient.gender} • {patient.blood_group}
-                          </p>
-                        )}
-                      </div>
+                      )}
                     </div>
-                    <ArrowLeft className="w-5 h-5 text-gray-400 transform rotate-180" />
+                  </button>
+
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/chat?userId=${patient.id}`, {
+                          state: { userId: patient.id, userName: patient.full_name || patient.email },
+                        })
+                      }
+                      className="inline-flex items-center text-sm px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                      title="Message patient"
+                    >
+                      <MessageCircle className="w-4 h-4 mr-1" />
+                      Message
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handlePatientSelect(patient.id)}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="View patient details"
+                    >
+                      <ArrowLeft className="w-5 h-5 transform rotate-180" />
+                    </button>
                   </div>
-                </button>
+                </div>
               ))
             )}
           </div>
 
-          
+
           {totalPages > 1 && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-center gap-3">
               <button
