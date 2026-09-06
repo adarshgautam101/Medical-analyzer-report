@@ -2,6 +2,10 @@
 
 > A production-hardened full-stack web application for patients to upload medical reports and doctors to analyze patient health data with AI-powered insights, real-time analytics, and role-based access control.
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Netlify-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://medicalreportanalyzeer.netlify.app/)
+
+**Live Production URL:** [https://medicalreportanalyzeer.netlify.app/](https://medicalreportanalyzeer.netlify.app/)
+
 ---
 
 ## Table of Contents
@@ -57,6 +61,7 @@ The **Medical Report Analyzer** automates the clinical workflow end-to-end:
 - **Health Analytics**: Parameter trend charts, Pearson correlation matrix, and status distributions.
 - **Medicine Tracking**: Manage current and historical medications with auto-shifting past status based on end date.
 - **Doctor Network**: Search registered doctors by specialty and manage access permissions.
+- **Real-Time Doctor Messaging**: Instant messaging with approved doctors directly from Doctor Access Management (`[Message]` button) and chat deletion with confirmation modals.
 
 ### 2.2 Doctor Features
 - **Doctor Registration**: Specialty taxonomy selection during onboarding.
@@ -64,6 +69,7 @@ The **Medical Report Analyzer** automates the clinical workflow end-to-end:
 - **Clinical Analytics View**: Read-only access to an authorized patient's lab values, trends, and medication history.
 - **Consultation Notes**: Rich-text clinical note creation for patient encounters using Quill.
 - **Doctor Profile**: Manage qualifications, clinic details, and field visibility settings.
+- **Real-Time Patient Messaging**: Direct messaging with assigned patients from the patient roster (`[Message]` button) with conversation deletion support.
 
 ---
 
@@ -236,7 +242,8 @@ The application uses Hugging Face Inference for clinical summarization:
 2. **Report (`ReportAndLabValues.js`)**: `user`, `fileName`, `filePath` (set to `null` post-processing), `fileType`, `uploadDate`, `reportDate`, `ocrStatus` (`'pending'` / `'processing'` / `'completed'` / `'failed'`), `rejectionReason`, `extractedText`, `aiSummary`, `aiSummaryData`, `category`.
 3. **LabValue (`ReportAndLabValues.js`)**: `report`, `parameterName`, `valueType` (`'numeric'` / `'qualitative'`), `value`, `qualitativeValue`, `unit`, `referenceRange`, `referenceStatus` (`'within'` / `'outside'` / `'unknown'`), `isAbnormal`, `confidence`, `pageNumber`, `sourceText`, `evidenceSource`.
 4. **PatientDoctorAccess (`AccessAndCategories.js`)**: `patient`, `doctor`, `status` (`'pending'` / `'approved'` / `'rejected'` / `'revoked'`), `grantedAt`, `revokedAt`.
-5. **DoctorProfile & PatientProfile (`Profiles.js`)**: Specialty credentials, patient health metrics (BMI, blood group, allergies), and doctor visibility settings.
+5. **Message (`Message.js`)**: `sender`, `receiver`, `messageText`, `isRead`, `createdAt`.
+6. **DoctorProfile & PatientProfile (`Profiles.js`)**: Specialty credentials, patient health metrics (BMI, blood group, allergies), and doctor visibility settings.
 
 ---
 
@@ -269,6 +276,12 @@ The application uses Hugging Face Inference for clinical summarization:
 - `POST /api/access/request` — Patient sends access request to a doctor.
 - `POST /api/access/approve/:request_id` — Doctor approves patient access request.
 - `POST /api/access/revoke/:request_id` — Patient revokes doctor access.
+
+### Real-Time Messaging & Chat
+- `POST /api/chat/send` — Send a direct message to a connected doctor or patient.
+- `GET /api/chat/conversations` — List active conversations with latest message preview and unread counters.
+- `GET /api/chat/history/:user_id` — Fetch full message history between authenticated user and target participant.
+- `DELETE /api/chat/conversation/:user_id` — Permanently delete conversation messages between authenticated user and target participant.
 
 ---
 
@@ -380,6 +393,7 @@ node --test src/tests/uiDataContractRegression.test.js
 ## 16. Production Deployment (Netlify + Render)
 
 ### 16.1 Netlify Deployment (Frontend)
+- **Live App URL**: [https://medicalreportanalyzeer.netlify.app/](https://medicalreportanalyzeer.netlify.app/)
 - **Base directory**: `frontend`
 - **Build command**: `npm run build`
 - **Publish directory**: `dist`
