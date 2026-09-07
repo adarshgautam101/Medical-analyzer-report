@@ -77,46 +77,49 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafb] flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen bg-[#edf6f5] flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-xl space-y-7">
         {/* Product Brand Header */}
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-teal-50 border border-teal-100 text-teal-700 shadow-sm mb-3">
-            <Activity className="w-5 h-5" />
+        <div className="text-center flex flex-col items-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-teal-700 text-white shadow-md mb-3.5">
+            <Activity className="w-8 h-8" />
           </div>
-          <h1 className="text-base font-bold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Medical Report Analyzer
           </h1>
+          <p className="text-sm sm:text-base font-medium text-slate-600 mt-1">
+            Healthcare Clinical Portal
+          </p>
         </div>
 
         {/* Elevated Form Card */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 sm:p-8 space-y-6">
+        <div className="bg-white border-2 border-slate-200/90 rounded-2xl shadow-[0_20px_50px_-12px_rgba(15,118,110,0.12),0_8px_24px_-4px_rgba(0,0,0,0.06)] p-8 sm:p-11 space-y-7">
           {/* Card Title & Subtitle */}
-          <div className="border-b border-slate-100 pb-4 text-center">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+          <div className="border-b-2 border-slate-100 pb-5 text-center">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               Create an account
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-sm sm:text-base font-medium text-slate-600 mt-1.5">
               Enter your details to register for your health portal
             </p>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <div className="bg-rose-50 border-2 border-rose-300 text-rose-900 text-sm sm:text-base font-medium px-4 py-3.5 rounded-xl flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {/* Form */}
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Role Selection Segmented Options */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              <label className="block text-sm sm:text-base font-bold text-slate-900 mb-2.5">
                 Select Account Role
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
                   onClick={() =>
@@ -126,15 +129,15 @@ export default function Register() {
                       doctor_category_id: '',
                     })
                   }
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-3 py-4 px-4 rounded-xl border-2 text-base font-bold transition-all ${
                     formData.role === 'patient'
-                      ? 'border-teal-600 bg-teal-50/70 text-teal-900 shadow-xs'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-teal-700 bg-teal-50/90 text-teal-950 shadow-sm ring-1 ring-teal-700'
+                      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
                   }`}
                 >
                   <HeartPulse
-                    className={`w-4 h-4 ${
-                      formData.role === 'patient' ? 'text-teal-700' : 'text-slate-400'
+                    className={`w-6 h-6 ${
+                      formData.role === 'patient' ? 'text-teal-700' : 'text-slate-500'
                     }`}
                   />
                   <span>Patient</span>
@@ -148,15 +151,15 @@ export default function Register() {
                       doctor_category_id: '',
                     })
                   }
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-3 py-4 px-4 rounded-xl border-2 text-base font-bold transition-all ${
                     formData.role === 'doctor'
-                      ? 'border-teal-600 bg-teal-50/70 text-teal-900 shadow-xs'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-teal-700 bg-teal-50/90 text-teal-950 shadow-sm ring-1 ring-teal-700'
+                      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
                   }`}
                 >
                   <Stethoscope
-                    className={`w-4 h-4 ${
-                      formData.role === 'doctor' ? 'text-teal-700' : 'text-slate-400'
+                    className={`w-6 h-6 ${
+                      formData.role === 'doctor' ? 'text-teal-700' : 'text-slate-500'
                     }`}
                   />
                   <span>Doctor</span>
@@ -168,13 +171,13 @@ export default function Register() {
             <div>
               <label
                 htmlFor="fullName"
-                className="block text-xs font-semibold text-slate-700 mb-1.5"
+                className="block text-sm sm:text-base font-bold text-slate-900 mb-2"
               >
                 Full Name
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <User className="w-4 h-4" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                  <User className="w-5 h-5" />
                 </div>
                 <input
                   id="fullName"
@@ -187,7 +190,7 @@ export default function Register() {
                   onChange={(e) =>
                     setFormData({ ...formData, fullName: e.target.value })
                   }
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all disabled:opacity-50"
+                  className="w-full pl-12 pr-4 py-4 bg-white border-2 border-slate-300 rounded-xl text-base text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-4 focus:ring-teal-500/20 focus:border-teal-700 transition-all disabled:opacity-50"
                 />
               </div>
             </div>
@@ -196,13 +199,13 @@ export default function Register() {
             <div>
               <label
                 htmlFor="email"
-                className="block text-xs font-semibold text-slate-700 mb-1.5"
+                className="block text-sm sm:text-base font-bold text-slate-900 mb-2"
               >
                 Email Address
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Mail className="w-4 h-4" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                  <Mail className="w-5 h-5" />
                 </div>
                 <input
                   id="email"
@@ -216,7 +219,7 @@ export default function Register() {
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all disabled:opacity-50"
+                  className="w-full pl-12 pr-4 py-4 bg-white border-2 border-slate-300 rounded-xl text-base text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-4 focus:ring-teal-500/20 focus:border-teal-700 transition-all disabled:opacity-50"
                 />
               </div>
             </div>
@@ -225,13 +228,13 @@ export default function Register() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-xs font-semibold text-slate-700 mb-1.5"
+                className="block text-sm sm:text-base font-bold text-slate-900 mb-2"
               >
                 Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Lock className="w-4 h-4" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                  <Lock className="w-5 h-5" />
                 </div>
                 <input
                   id="password"
@@ -245,18 +248,18 @@ export default function Register() {
                   onChange={(e) =>
                     setFormData({ ...formData, password: e.target.value })
                   }
-                  className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all disabled:opacity-50"
+                  className="w-full pl-12 pr-12 py-4 bg-white border-2 border-slate-300 rounded-xl text-base text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-4 focus:ring-teal-500/20 focus:border-teal-700 transition-all disabled:opacity-50"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-800 focus:outline-none"
                   tabIndex={-1}
                 >
                   {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="w-5 h-5" />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="w-5 h-5" />
                   )}
                 </button>
               </div>
@@ -264,12 +267,12 @@ export default function Register() {
 
             {/* Doctor Specialty Category Field (Conditional) */}
             {formData.role === 'doctor' && (
-              <div className="bg-teal-50/50 border border-teal-100/80 rounded-xl p-3.5 space-y-2">
+              <div className="bg-teal-50/90 border-2 border-teal-200 rounded-xl p-5 space-y-2.5">
                 <label
                   htmlFor="doctor_category_id"
-                  className="block text-xs font-semibold text-teal-900"
+                  className="block text-sm sm:text-base font-bold text-teal-950"
                 >
-                  Clinical Specialty Category <span className="text-rose-500">*</span>
+                  Clinical Specialty Category <span className="text-rose-600">*</span>
                 </label>
                 <select
                   id="doctor_category_id"
@@ -283,7 +286,7 @@ export default function Register() {
                       doctor_category_id: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 disabled:opacity-50"
+                  className="w-full px-4 py-3.5 bg-white border-2 border-teal-300 rounded-xl text-base text-slate-900 font-medium focus:outline-none focus:ring-4 focus:ring-teal-500/20 focus:border-teal-700 disabled:opacity-50"
                 >
                   <option value="">Select specialty category…</option>
                   {categories.map((c) => (
@@ -296,21 +299,21 @@ export default function Register() {
             )}
 
             {/* Submit Button */}
-            <div className="pt-2">
+            <div className="pt-3">
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white rounded-xl text-base sm:text-lg font-bold shadow-md hover:shadow-lg transition-all focus:outline-none focus:ring-4 focus:ring-teal-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <Loader2 className="w-6 h-6 animate-spin text-white" />
                     <span>Creating account...</span>
                   </>
                 ) : (
                   <>
                     <span>Create account</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-6 h-6" />
                   </>
                 )}
               </button>
@@ -318,12 +321,12 @@ export default function Register() {
           </form>
 
           {/* Secondary Link */}
-          <div className="pt-2 border-t border-slate-100 text-center">
-            <p className="text-xs text-slate-500">
+          <div className="pt-3 border-t-2 border-slate-100 text-center">
+            <p className="text-sm sm:text-base font-medium text-slate-600">
               Already have an account?{' '}
               <Link
                 to="/login"
-                className="font-semibold text-teal-700 hover:text-teal-800 hover:underline transition-colors"
+                className="font-bold text-teal-700 hover:text-teal-900 underline underline-offset-4 transition-colors"
               >
                 Sign in
               </Link>
