@@ -15,9 +15,17 @@ export default function Register() {
   const [categories, setCategories] = useState([])
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const { register } = useAuth()
   const navigate = useNavigate()
+
+  const passwordMismatch =
+    confirmPasswordTouched &&
+    confirmPassword.length > 0 &&
+    formData.password !== confirmPassword
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -34,6 +42,19 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    if (!confirmPassword) {
+      setConfirmPasswordTouched(true)
+      setError('Please confirm your password.')
+      return
+    }
+
+    if (formData.password !== confirmPassword) {
+      setConfirmPasswordTouched(true)
+      setError('Passwords do not match.')
+      return
+    }
+
     setLoading(true)
 
     let doctorPayload = null
@@ -103,11 +124,10 @@ export default function Register() {
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, role: 'patient', doctor_category_id: '' })}
-                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${
-                  formData.role === 'patient'
-                    ? 'bg-white text-teal-800 shadow-sm font-semibold border border-slate-200/70'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                }`}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${formData.role === 'patient'
+                  ? 'bg-white text-teal-800 shadow-sm font-semibold border border-slate-200/70'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
               >
                 <HeartPulse className={`w-4 h-4 shrink-0 ${formData.role === 'patient' ? 'text-teal-600' : 'text-slate-400'}`} />
                 <span>Patient</span>
@@ -115,11 +135,10 @@ export default function Register() {
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, role: 'doctor', doctor_category_id: '' })}
-                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${
-                  formData.role === 'doctor'
-                    ? 'bg-white text-teal-800 shadow-sm font-semibold border border-slate-200/70'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                }`}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${formData.role === 'doctor'
+                  ? 'bg-white text-teal-800 shadow-sm font-semibold border border-slate-200/70'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
               >
                 <Stethoscope className={`w-4 h-4 shrink-0 ${formData.role === 'doctor' ? 'text-teal-600' : 'text-slate-400'}`} />
                 <span>Doctor</span>
@@ -204,6 +223,50 @@ export default function Register() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                CONFIRM PASSWORD
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  required
+                  disabled={loading}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value)
+                    if (!confirmPasswordTouched) setConfirmPasswordTouched(true)
+                  }}
+                  placeholder="Re-enter your password"
+                  className={`block w-full pl-10 pr-10 py-2.5 text-sm bg-white border rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 transition-colors disabled:bg-slate-50 disabled:text-slate-500 ${passwordMismatch
+                    ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/20'
+                    : 'border-slate-300 focus:border-teal-600 focus:ring-teal-500/20'
+                    }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  disabled={loading}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors focus:outline-none"
+                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {passwordMismatch && (
+                <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Passwords do not match.</span>
+                </p>
+              )}
             </div>
 
             {/* Doctor Clinical Profile Section */}
