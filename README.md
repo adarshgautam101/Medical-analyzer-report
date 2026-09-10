@@ -430,3 +430,6 @@ node --test src/tests/uiDataContractRegression.test.js
 - **OCR Concurrency**: Background OCR processing operates with a concurrency limit of `1` (`MAX_CONCURRENT_OCR = 1`) to preserve server memory and CPU resources.
 - **Synchronous Pre-Check**: Pre-upload medical document validation runs synchronously during upload. Large PDF files (10MB) may take 15–30 seconds to parse.
 - **Medical Disclaimer**: This application is a technical demonstration for clinical data extraction, visualization, and AI summarization. It is not a certified medical device and should not be used for emergency medical diagnosis.
+
+
+Thanks for visting
