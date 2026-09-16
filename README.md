@@ -6,6 +6,10 @@
 
 **Live Production URL:** [https://medicalreportanalyzeer.netlify.app/](https://medicalreportanalyzeer.netlify.app/)
 
+📖 **Component Documentation:**
+- 🖥️ [Frontend Client Documentation (`frontend/README.md`)](./frontend/README.md)
+- ⚙️ [Backend API Documentation (`backend/README.md`)](./backend/README.md)
+
 ---
 
 ## Table of Contents
@@ -54,21 +58,23 @@ The **Medical Report Analyzer** automates the clinical workflow end-to-end:
 ## 2. Features by Role
 
 ### 2.1 Patient Features
-- **Registration & Authentication**: JWT-based authentication with bcrypt password encryption.
-- **Dashboard**: Overview of total uploaded reports, flagged abnormalities, and recent reports.
-- **Report Upload**: Multipart PDF/image upload with background text extraction and instant non-medical document validation.
+- **Registration & Authentication**: Segmented role onboarding (Patient vs Doctor), password confirmation with real-time mismatch checking, show/hide password visibility toggling, and role-mismatch login prevention.
+- **Patient Dashboard**: Clean, premium SaaS health dashboard featuring a personalized time-contextual greeting (`Good Morning`, `Good Afternoon`, `Good Evening`), serene inspirational artwork & quote, quick action cards (Find Doctors, View Reports, Manage Medicines, Update Profile), high-priority abnormal values warning callout, BMI status indicators, and recent reports table with direct view actions.
+- **Responsive Mobile Navigation**: Collapsible mobile hamburger drawer with accessible navigation links and seamless viewport transitions.
+- **Report Upload**: Multipart PDF/image upload with background text extraction, format validation, and instant non-medical document rejection alerts.
 - **Report Detail Viewer**: Structured lab values table, abnormal indicator badges, reference range evaluation, and AI summaries.
 - **Health Analytics**: Parameter trend charts, Pearson correlation matrix, and status distributions.
 - **Medicine Tracking**: Manage current and historical medications with auto-shifting past status based on end date.
-- **Doctor Network**: Search registered doctors by specialty and manage access permissions.
-- **Real-Time Doctor Messaging**: Instant messaging with approved doctors directly from Doctor Access Management (`[Message]` button) and chat deletion with confirmation modals.
+- **Doctor Network**: Search registered doctors by specialty/category and manage access permissions (Request, Grant, Revoke).
+- **Real-Time Doctor Messaging**: Instant Socket.IO messaging with approved doctors directly from Doctor Access Management (`[Message]` button) and full conversation deletion with confirmation modals.
 
 ### 2.2 Doctor Features
-- **Doctor Registration**: Specialty taxonomy selection during onboarding.
-- **Patient Access Dashboard**: Patient-first view displaying only patients with active, approved consent.
-- **Clinical Analytics View**: Read-only access to an authorized patient's lab values, trends, and medication history.
-- **Consultation Notes**: Rich-text clinical note creation for patient encounters using Quill.
-- **Doctor Profile**: Manage qualifications, clinic details, and field visibility settings.
+- **Doctor Registration & Onboarding**: Clinical category taxonomy selection during onboarding, confirm password validation, and credential security.
+- **Practice Dashboard**: Practice overview banner, quick clinical actions, platform patient statistics, and urgent pending patient access requests with one-click Accept/Reject buttons.
+- **Patient Access Roster**: Patient-first view displaying only patients with active, approved consent.
+- **Clinical Analytics View**: Read-only access to an authorized patient's lab values, longitudinal trends, and medication history.
+- **Consultation Notes**: Rich-text clinical note creation for patient encounters using React Quill with report context linkage.
+- **Doctor Profile**: Manage qualifications, clinic details, bio, and individual field visibility settings (toggle patient visibility per field).
 - **Real-Time Patient Messaging**: Direct messaging with assigned patients from the patient roster (`[Message]` button) with conversation deletion support.
 
 ---
@@ -78,12 +84,15 @@ The **Medical Report Analyzer** automates the clinical workflow end-to-end:
 | Layer | Technology | Version | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Frontend** | React | 18.2.0 | UI component framework |
-| | Vite | 5.0.8 | Frontend build tool and dev server |
-| | React Router DOM | 6.20.0 | Single-page application routing |
-| | TanStack React Query | 5.99.0 | Server state synchronization & caching |
+| | Vite | 5.0.8 | Frontend build tool and development server |
+| | React Router DOM | 6.20.0 | Single-page application routing and role guards |
+| | TanStack React Query | 5.99.0 | Server state synchronization, caching & optimistic updates |
 | | Axios | 1.6.2 | HTTP client with request correlation interceptors |
 | | Recharts | 3.8.1 | Interactive charts & analytics visualization |
-| | Tailwind CSS | 3.3.6 | Utility-first CSS styling |
+| | Tailwind CSS | 3.3.6 | Utility-first CSS styling and responsive layout |
+| | Lucide React | 0.294.0 | Clean, consistent healthcare and UI iconography |
+| | React Dropzone | 14.2.3 | Drag-and-drop file upload interface |
+| | React Quill | 2.0.0 | Rich-text editor for clinical consultation notes |
 | | Socket.IO Client | 4.8.3 | Real-time websocket client updates |
 | **Backend** | Node.js | ^20.x | JavaScript runtime environment |
 | | Express.js | 4.19.2 | Web API framework |
@@ -180,6 +189,14 @@ The background OCR pipeline operates with a strictly enforced single-threaded co
                        ▼
             Delete Temporary PDF File from backend/uploads/
 ```
+
+### 6.1 Low-Memory OCR Optimization (Render 512MB RAM Tier)
+To ensure zero Out-Of-Memory (OOM) crashes on resource-constrained cloud containers (such as Render's 512MB free tier), the OCR engine is tuned with multiple memory-safety measures:
+- **150 DPI Target Resolution**: Scanned PDF pages are rasterized at 150 DPI (down from 300+ DPI), drastically slashing memory footprints during canvas allocation while preserving clinical character recognition fidelity.
+- **Worker Lifecycle Recycling**: OCR workers (`Scribe.js` / `Tesseract.js`) follow a strictly managed lifecycle with explicit termination (`worker.terminate()`) between documents, preventing worker-level memory leaks across long-running server instances.
+- **Canvas Buffer Release**: Intermediate rendering structures and raw image pixel buffers are released from memory immediately before launching OCR recognition tasks.
+- **Halftone Processing Bypass**: Heavy memory-intensive halftone filter pipelines are bypassed in favor of lightweight contrast thresholding.
+- **Dual Extraction Strategy**: Digital/text-native PDFs are extracted in milliseconds via lightweight `pdf-parse` streams; only true scanned image PDFs route to the OCR worker queue.
 
 ---
 
@@ -431,5 +448,7 @@ node --test src/tests/uiDataContractRegression.test.js
 - **Synchronous Pre-Check**: Pre-upload medical document validation runs synchronously during upload. Large PDF files (10MB) may take 15–30 seconds to parse.
 - **Medical Disclaimer**: This application is a technical demonstration for clinical data extraction, visualization, and AI summarization. It is not a certified medical device and should not be used for emergency medical diagnosis.
 
+---
 
-Thanks for visting
+**Medical Report Analyzer** — Empowering patients and clinicians with accessible, AI-assisted health insights.
+

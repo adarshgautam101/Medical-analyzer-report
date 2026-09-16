@@ -19,57 +19,57 @@ export default function PatientDashboard() {
   const { showToast } = useToast()
   const queryClient = useQueryClient()
 
-  
+
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
     queryFn: getProfile,
-    staleTime: 5 * 60 * 1000, 
+    staleTime: 5 * 60 * 1000,
     onError: (error) => {
       showToast(error.response?.data?.detail || 'Failed to load profile', 'error')
     }
   })
 
-  
+
   const { data: medicines, isLoading: medicinesLoading } = useQuery({
     queryKey: ['medicines'],
     queryFn: getMedicines,
-    staleTime: 5 * 60 * 1000, 
+    staleTime: 5 * 60 * 1000,
     onError: (error) => {
       showToast('Failed to load medicines', 'error')
     }
   })
 
-  
+
   const { data: reportsSummary, isLoading: reportsLoading } = useQuery({
     queryKey: ['reports-summary'],
     queryFn: getReportsSummary,
-    staleTime: 5 * 60 * 1000, 
+    staleTime: 5 * 60 * 1000,
     onError: (error) => {
       showToast(error.response?.data?.detail || 'Failed to load reports', 'error')
     }
   })
 
-  
+
   const { data: discovery = { total_doctors_on_platform: 0, your_active_doctors: 0 }, isLoading: discoveryLoading } = useQuery({
     queryKey: ['discovery-stats'],
     queryFn: getDiscoveryStats,
-    staleTime: 5 * 60 * 1000, 
+    staleTime: 5 * 60 * 1000,
     onError: (error) => {
       console.error('Discovery stats error:', error)
     }
   })
 
-  
+
   const { data: doctorAccess = [], isLoading: doctorAccessLoading, refetch: refetchDoctorAccess } = useQuery({
     queryKey: ['doctor-access'],
     queryFn: getDoctorAccess,
-    staleTime: 5 * 60 * 1000, 
+    staleTime: 5 * 60 * 1000,
     onError: (error) => {
       showToast('Failed to load doctor access', 'error')
     }
   })
 
-  
+
   const grantAccessMutation = useMutation({
     mutationFn: grantDoctorAccess,
     onSuccess: () => {
@@ -94,10 +94,10 @@ export default function PatientDashboard() {
     }
   })
 
-  
+
   const isLoading = profileLoading || medicinesLoading || reportsLoading || discoveryLoading || doctorAccessLoading
 
-  
+
   const stats = {
     activeMedicines: medicines?.filter((m) => m.status === 'current').length || 0,
     abnormalValues: reportsSummary?.abnormal_count || 0,
@@ -113,7 +113,7 @@ export default function PatientDashboard() {
     (row) => row.status === 'pending'
   ).length || 0
 
-  
+
   const handleGrantAccess = (doctorId) => {
     grantAccessMutation.mutate(doctorId)
   }
@@ -143,7 +143,7 @@ export default function PatientDashboard() {
           <p className="text-gray-600">Welcome back! Here&apos;s your health overview</p>
         </div>
 
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Link to="/find-doctors" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg">
             <div className="flex items-center">
@@ -230,8 +230,8 @@ export default function PatientDashboard() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Abnormal Values</p>
                 <p className={`text-base font-bold mt-1 ${stats.abnormalValues > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {stats.abnormalValues === 0 
-                    ? 'No abnormalities detected' 
+                  {stats.abnormalValues === 0
+                    ? 'No abnormalities detected'
                     : `${stats.abnormalValues} require attention`}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">Across all reports</p>
@@ -260,10 +260,10 @@ export default function PatientDashboard() {
                     {profile.bmi < 18.5
                       ? 'Underweight'
                       : profile.bmi < 25
-                      ? 'Normal'
-                      : profile.bmi < 30
-                      ? 'Overweight'
-                      : 'Obese'}
+                        ? 'Normal'
+                        : profile.bmi < 30
+                          ? 'Overweight'
+                          : 'Obese'}
                   </p>
                 </div>
               </div>
@@ -271,7 +271,7 @@ export default function PatientDashboard() {
           )}
         </div>
 
-        
+
         <div className="bg-white rounded-xl shadow-md mb-8">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900">Recent Reports</h2>
@@ -311,13 +311,12 @@ export default function PatientDashboard() {
                       )}
                     </div>
                     <span
-                      className={`px-3 py-1 text-xs rounded-full ${
-                        report.ocr_status === 'completed'
+                      className={`px-3 py-1 text-xs rounded-full ${report.ocr_status === 'completed'
                           ? 'bg-green-100 text-green-800'
                           : report.ocr_status === 'failed'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}
                     >
                       {report.ocr_status}
                     </span>
